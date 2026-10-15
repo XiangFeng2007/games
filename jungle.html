@@ -1,0 +1,2472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f1420">
+<title>斗兽棋 · 经典 &amp; 翻棋</title>
+<style>
+/* ==================================================================
+   斗兽棋 · 界面样式
+   ================================================================== */
+:root {
+  --bg: #0f1420;
+  --bg2: #161d2d;
+  --panel: #1c2537;
+  --panel2: #232f45;
+  --line: #33405c;
+  --text: #e8eefc;
+  --dim: #93a2c0;
+  --red: #e8544a;
+  --red-d: #a8322a;
+  --blue: #3d8ee0;
+  --blue-d: #245e9b;
+  --water: #2a5f8f;
+  --water2: #1f4a72;
+  --land: #e9d6ae;
+  --land2: #dcc596;
+  --gold: #f0c419;
+  --ok: #43c07a;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: radial-gradient(1100px 700px at 50% -10%, #1d2a42 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100%;
+}
+
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+
+/* ------------------------------------------------------------ 布局 */
+.app { max-width: 1180px; margin: 0 auto; padding: 14px 16px 40px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 6px 2px 14px; flex-wrap: wrap;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 {
+  font-size: 25px; margin: 0; letter-spacing: 3px;
+  background: linear-gradient(92deg, #ff7a6b, #f0c419 45%, #59b0ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-weight: 800;
+}
+.brand .sub { font-size: 12px; color: var(--dim); letter-spacing: 1px; }
+
+.modebadge {
+  padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+  border: 1px solid var(--line); background: var(--panel2); color: var(--dim);
+}
+.modebadge.classic { color: #ffd777; border-color: #6b5a25; background: #33290f; }
+.modebadge.flip { color: #8fd0ff; border-color: #2b5c86; background: #10283c; }
+
+.spacer { flex: 1; }
+
+.main {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------ 棋盘 */
+.boardwrap {
+  background: linear-gradient(180deg, #20293c, #171e2d);
+  border: 1px solid var(--line); border-radius: 18px; padding: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.42);
+}
+
+.board {
+  position: relative;
+  display: grid;
+  /* minmax(0,1fr) 而不是 1fr：否则单元格的 min-content 会把网格撑宽，
+     在窄屏上导致最右一列溢出屏幕 */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(9, minmax(0, 1fr));
+  gap: 2px;
+  aspect-ratio: 7 / 9;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  border-radius: 12px;
+  padding: 6px;
+  background: #0c1220;
+  user-select: none;
+  touch-action: manipulation;
+  overflow: hidden;
+}
+@media (min-width: 901px) { .board { max-width: 520px; } }
+
+.cell {
+  position: relative; border: 0; padding: 0; margin: 0;
+  background: linear-gradient(160deg, var(--land), var(--land2));
+  border-radius: 5px; min-width: 0; min-height: 0;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  transition: box-shadow .12s, filter .12s;
+}
+.cell.land-dark { background: linear-gradient(160deg, #ded0a8, #d0bc8d); }
+.cell.water {
+  background: linear-gradient(160deg, var(--water), var(--water2));
+  box-shadow: inset 0 0 12px rgba(0,0,0,.3);
+}
+.cell.trap {
+  background: repeating-linear-gradient(45deg, #5b4a2c 0 5px, #6d5933 5px 10px);
+}
+.cell.trap.red-trap { box-shadow: inset 0 0 0 2px rgba(232,84,74,.5); }
+.cell.trap.blue-trap { box-shadow: inset 0 0 0 2px rgba(61,142,224,.5); }
+.cell.den {
+  background: linear-gradient(160deg, #3a2f18, #241d0f);
+  box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 18px rgba(240,196,25,.28);
+}
+.cell.den.red-den { box-shadow: inset 0 0 0 2px var(--red), inset 0 0 18px rgba(232,84,74,.3); }
+.cell.den.blue-den { box-shadow: inset 0 0 0 2px var(--blue), inset 0 0 18px rgba(61,142,224,.3); }
+
+/* 格子小标记：兽穴 / 陷阱 / 河流 */
+.cell .mark {
+  position: absolute; font-size: 9px; font-weight: 700; letter-spacing: .5px;
+  color: rgba(0,0,0,.42); pointer-events: none;
+}
+.cell.water .mark, .cell.den .mark { color: rgba(255,255,255,.5); }
+.cell .mark.den-mark { font-size: 13px; color: var(--gold); }
+.cell.den.red-den .mark.den-mark { color: #ff9a90; }
+.cell.den.blue-den .mark.den-mark { color: #9cd0ff; }
+.cell .coord {
+  position: absolute; left: 3px; top: 2px; font-size: 8px;
+  color: rgba(0,0,0,.3); pointer-events: none;
+}
+.cell.water .coord, .cell.den .coord { color: rgba(255,255,255,.34); }
+
+/* 可落点 / 可选中 */
+.cell.selectable { cursor: pointer; }
+.cell.selectable:hover { filter: brightness(1.1); }
+.cell.movable::after {
+  content: ''; position: absolute; inset: 0; border-radius: 5px;
+  box-shadow: inset 0 0 0 2px rgba(67,192,122,.85);
+  pointer-events: none;
+}
+.cell.target { cursor: pointer; }
+.cell.target::after {
+  content: ''; position: absolute; inset: 0; border-radius: 5px;
+  box-shadow: inset 0 0 0 2px rgba(240,196,25,.9);
+  background: rgba(240,196,25,.16);
+  pointer-events: none;
+}
+.cell.capture::after {
+  box-shadow: inset 0 0 0 2px rgba(255,72,72,.95);
+  background: rgba(255,72,72,.2);
+}
+.cell.selected::before {
+  content: ''; position: absolute; inset: -2px; border-radius: 7px;
+  box-shadow: 0 0 0 2px #fff, 0 0 14px rgba(255,255,255,.6);
+  pointer-events: none; z-index: 3;
+}
+.cell.lastmove::after {
+  content: ''; position: absolute; inset: 0; border-radius: 5px;
+  background: rgba(120,180,255,.15);
+  box-shadow: inset 0 0 0 1px rgba(120,180,255,.5);
+  pointer-events: none;
+}
+.cell.clickable-flip { cursor: pointer; }
+.cell.clickable-flip:hover .piece { filter: brightness(1.12); }
+
+/* ------------------------------------------------------------ 棋子 */
+.piece {
+  width: 88%; height: 88%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 2;
+  font-weight: 800;
+  min-width: 0; min-height: 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,.42), inset 0 -2px 0 rgba(0,0,0,.22);
+  transition: transform .12s;
+}
+.piece .glyph { font-size: clamp(11px, 2.7vw, 25px); line-height: 1; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.piece.red { background: radial-gradient(circle at 34% 28%, #ff8878, var(--red) 62%, var(--red-d)); }
+.piece.blue { background: radial-gradient(circle at 34% 28%, #7cc0ff, var(--blue) 62%, var(--blue-d)); }
+.cell.selectable:hover .piece { transform: translateY(-1px) scale(1.04); }
+
+.piece.hidden-piece {
+  background: repeating-linear-gradient(45deg, #3c4d6e 0 6px, #33445f 6px 12px);
+  box-shadow: 0 2px 6px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,255,255,.14);
+}
+.piece.hidden-piece .glyph { color: rgba(255,255,255,.55); font-size: clamp(15px, 3.3vw, 26px); }
+
+/* 战力数字角标 */
+.piece .rank {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 42%; height: 42%; max-width: 17px; max-height: 17px;
+  border-radius: 50%; background: rgba(9,14,24,.92); color: #ffd777;
+  font-size: 9px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,.3);
+}
+.piece.trapped { filter: grayscale(.55) brightness(.82); }
+.piece.trapped::after {
+  content: '陷'; position: absolute; inset: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); color: #ff9d9d; font-size: 11px; font-weight: 800;
+}
+.piece.in-water { box-shadow: 0 2px 5px rgba(0,0,0,.42), 0 0 0 2px rgba(140,210,255,.5); }
+
+/* 被吃动画 */
+@keyframes captured {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(.2) rotate(28deg); opacity: 0; }
+}
+.piece.captured { animation: captured .3s ease-in forwards; }
+
+/* ------------------------------------------------------------ 侧栏 */
+.side { display: flex; flex-direction: column; gap: 14px; }
+
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--panel2));
+  border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.24);
+}
+.card h3 {
+  margin: 0 0 10px; font-size: 13px; letter-spacing: 1.5px; color: var(--dim);
+  font-weight: 700; text-transform: uppercase;
+}
+
+/* 回合指示 */
+.turnbar { display: flex; gap: 8px; }
+.turnpill {
+  flex: 1; padding: 9px 10px; border-radius: 10px; text-align: center;
+  border: 1px solid var(--line); background: #151c2b; transition: all .2s;
+}
+.turnpill .who { font-size: 11px; color: var(--dim); letter-spacing: .5px; }
+.turnpill .role { font-size: 15px; font-weight: 800; margin-top: 2px; }
+.turnpill.red .role { color: #ff8b80; }
+.turnpill.blue .role { color: #8ac4ff; }
+.turnpill.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 16px rgba(240,196,25,.22); background: #221f10; }
+.turnpill.active .who { color: var(--gold); }
+
+.statusline {
+  margin-top: 10px; font-size: 13px; color: var(--text);
+  min-height: 20px; line-height: 1.5;
+}
+.statusline .hl { color: var(--gold); font-weight: 700; }
+.statusline .warn { color: #ff9d9d; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  border: 1px solid var(--line); background: #202a3d; color: var(--text);
+  padding: 8px 13px; border-radius: 9px; font-size: 13px; font-weight: 600;
+  transition: all .15s;
+}
+.btn:hover:not(:disabled) { background: #2a3752; border-color: #4a5c80; }
+.btn.primary { background: linear-gradient(180deg, #2f7ce0, #245e9b); border-color: #3d8ee0; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.12); }
+.btn.ghost { background: transparent; }
+.btn.small { padding: 6px 10px; font-size: 12px; }
+
+/* 设置行 */
+.field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.field:last-child { margin-bottom: 0; }
+.field > label { font-size: 12.5px; color: var(--dim); width: 62px; flex: none; }
+.seg { display: flex; flex: 1; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button {
+  flex: 1; border: 0; background: #1a2334; color: var(--dim);
+  padding: 8px 6px; font-size: 12.5px; font-weight: 600; transition: all .15s;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: linear-gradient(180deg, #33507c, #263d5f); color: #fff; }
+.seg button:hover:not(.on) { background: #222d43; }
+
+/* 吃子记录 */
+.eaten { display: flex; flex-direction: column; gap: 7px; }
+.eaten .row { display: flex; align-items: center; gap: 7px; min-height: 26px; flex-wrap: wrap; }
+.eaten .row .lbl { font-size: 11.5px; color: var(--dim); width: 34px; flex: none; }
+.eaten .row [id^="eaten-"] { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.chip {
+  width: 25px; height: 25px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; color: #fff;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,.25);
+}
+.chip.red { background: radial-gradient(circle at 34% 28%, #ff8878, var(--red) 65%, var(--red-d)); }
+.chip.blue { background: radial-gradient(circle at 34% 28%, #7cc0ff, var(--blue) 65%, var(--blue-d)); }
+.chip.none { color: var(--dim); font-size: 11px; font-weight: 500; }
+
+/* 棋力阶梯 */
+.ladder { display: flex; flex-direction: column; gap: 3px; }
+.ladder .rung {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; padding: 4px 7px; border-radius: 7px; background: #19212f;
+}
+.ladder .rung b { color: var(--gold); width: 22px; text-align: center; }
+.ladder .rung .lbl { color: var(--text); font-weight: 700; width: 30px; }
+.ladder .rung .note { color: var(--dim); font-size: 11px; }
+.ladder .rung.special { background: #1e2a1c; }
+.ladder .rung.special .note { color: #8fd89f; }
+
+/* 日志 */
+.log { max-height: 210px; overflow-y: auto; font-size: 12.5px; line-height: 1.65; }
+.log .entry { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,.06); color: var(--dim); }
+.log .entry:last-child { border-bottom: 0; }
+.log .entry b.r { color: #ff8b80; }
+.log .entry b.b { color: #8ac4ff; }
+.log .entry .eat { color: #ffc9c4; }
+.log .entry.head { color: var(--gold); font-weight: 700; }
+
+/* AI 信息 */
+.aiinfo { font-size: 11.5px; color: var(--dim); display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------ 遮罩 / 弹窗 */
+.overlay {
+  position: fixed; inset: 0; background: rgba(6,9,16,.82);
+  display: flex; align-items: center; justify-content: center; z-index: 60;
+  padding: 20px; backdrop-filter: blur(3px);
+}
+.overlay.hidden { display: none; }
+.modal {
+  background: linear-gradient(180deg, #212b40, #1a2233);
+  border: 1px solid var(--line); border-radius: 18px;
+  padding: 24px; max-width: 460px; width: 100%;
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+  max-height: 88vh; overflow-y: auto;
+}
+.modal h2 { margin: 0 0 6px; font-size: 22px; }
+.modal .sub { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+.modal .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.modal .actions .btn { flex: 1; min-width: 120px; text-align: center; }
+
+.winline { font-size: 15px; line-height: 1.7; margin: 12px 0; }
+.winline .hl { color: var(--gold); font-weight: 700; }
+
+.rules dl { margin: 0; font-size: 13px; line-height: 1.7; }
+.rules dt { font-weight: 700; color: #ffd777; margin-top: 9px; }
+.rules dd { margin: 2px 0 0; color: var(--dim); }
+
+/* 再来一局的难度选择（弹窗内） */
+.modal .seg { margin-top: 4px; }
+
+/* ------------------------------------------------------------ 轻提示 */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: rgba(20,28,44,.96); border: 1px solid var(--line);
+  color: var(--text); padding: 10px 18px; border-radius: 10px;
+  font-size: 13px; z-index: 80; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+/* ------------------------------------------------------------ 彩蛋 */
+.egg-overlay { background: rgba(6,9,16,.9); }
+
+.egg-stage { position: relative; width: 100%; max-width: 520px; }
+
+.egg-card {
+  position: relative;
+  background: linear-gradient(170deg, #2a2246, #1c1a30 55%, #221c38);
+  border: 1px solid #5a4a8a;
+  border-radius: 20px;
+  padding: 26px 22px 22px;
+  text-align: center;
+  box-shadow: 0 26px 80px rgba(0,0,0,.7), 0 0 60px rgba(160,120,255,.18) inset;
+  animation: eggPop .5s cubic-bezier(.2,1.5,.4,1);
+}
+@keyframes eggPop {
+  0% { transform: scale(.7) translateY(20px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.egg-badge {
+  display: inline-block; font-size: 11.5px; letter-spacing: 2px;
+  color: #ffd777; border: 1px solid #7a6430; background: #33290f;
+  padding: 4px 12px; border-radius: 999px; margin-bottom: 12px;
+}
+
+.egg-title {
+  margin: 0 0 6px; font-size: 34px; letter-spacing: 5px; font-weight: 900;
+  background: linear-gradient(92deg, #ff8b7a, #f0c419 42%, #8fd0ff 88%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: eggShine 3s ease-in-out infinite;
+}
+@keyframes eggShine {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+
+.egg-sub { font-size: 12px; color: #a294c8; letter-spacing: 3px; margin-bottom: 14px; }
+
+.egg-line {
+  font-size: 14px; color: #e8eefc; line-height: 1.6; margin-bottom: 16px;
+  min-height: 22px;
+}
+
+.egg-piece-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+.egg-chip {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 800; color: #fff;
+  animation: chipHop 1.6s ease-in-out infinite;
+  box-shadow: 0 3px 8px rgba(0,0,0,.45), inset 0 -2px 0 rgba(0,0,0,.25);
+}
+.egg-chip.red { background: radial-gradient(circle at 34% 28%, #ff8878, var(--red) 62%, var(--red-d)); }
+.egg-chip.blue { background: radial-gradient(circle at 34% 28%, #7cc0ff, var(--blue) 62%, var(--blue-d)); }
+@keyframes chipHop {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-9px) scale(1.08); }
+}
+
+.egg-confetti { position: absolute; inset: -60px 0 0; overflow: visible; pointer-events: none; }
+.confetti-bit {
+  position: absolute; top: 0; width: 9px; height: 14px; border-radius: 2px;
+  opacity: .95;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes confettiFall {
+  0% { transform: translateY(-40px) rotate(0deg); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateY(560px) rotate(520deg); opacity: 0; }
+}
+
+.egg-card .actions { margin-top: 4px; }
+
+/* 窄屏：缩小彩蛋棋子，保证 8 枚排在一行不折行 */
+@media (max-width: 420px) {
+  .egg-stage { max-width: 100%; }
+  .egg-card { padding: 20px 14px 18px; }
+  .egg-title { font-size: 27px; letter-spacing: 3px; }
+  .egg-piece-row { gap: 4px; }
+  .egg-chip { width: 27px; height: 27px; font-size: 12.5px; }
+}
+
+/* ------------------------------------------------------------ 四乘四棋盘 */
+/* 4×4 时棋盘是正方形，格子更大；限制一下最大宽度避免过度放大 */
+.board.mini-board { max-width: 440px; }
+.board.mini-board .piece .glyph { font-size: clamp(16px, 4.6vw, 34px); }
+.board.mini-board .piece .rank { max-width: 20px; max-height: 20px; font-size: 10px; }
+.board.mini-board .cell .coord { font-size: 9px; }
+
+
+/* 棋盘上方信息条（移动端友好） */
+.boardmeta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px; font-size: 12.5px; color: var(--dim);
+}
+.boardmeta .k { color: var(--text); font-weight: 700; }
+
+@media (max-width: 900px) {
+  .app { padding: 10px 10px 30px; }
+  .brand h1 { font-size: 20px; letter-spacing: 2px; }
+  .boardwrap { padding: 8px; border-radius: 14px; }
+  .board { gap: 1px; padding: 4px; }
+  .card { padding: 12px; }
+  .topbar { padding-bottom: 10px; gap: 8px; }
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <h1>斗兽棋</h1>
+      <span class="sub">JUNGLE CHESS</span>
+    </div>
+    <span id="modebadge" class="modebadge classic">经典模式</span>
+    <div class="spacer"></div>
+    <div class="toolbar">
+      <button id="btnNew" class="btn primary" type="button">新局</button>
+      <button id="btnUndo" class="btn" type="button">悔棋</button>
+      <button id="btnRules" class="btn ghost" type="button">规则</button>
+      <button id="btnSound" class="btn ghost" type="button">🔊 音效</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- ======================= 棋盘区 ======================= -->
+    <section class="boardwrap">
+      <div class="boardmeta">
+        <span>当前：<span class="k" id="metaTurn">—</span></span>
+        <span>·</span>
+        <span>快捷键：<span class="k">R</span> 新局 / <span class="k">U</span> 悔棋 / <span class="k">Esc</span> 取消</span>
+      </div>
+      <div id="board" class="board" aria-label="斗兽棋棋盘"></div>
+    </section>
+
+    <!-- ======================= 侧栏 ======================= -->
+    <aside class="side">
+
+      <div class="card">
+        <h3>对局</h3>
+        <div class="turnbar">
+          <div id="pillP1" class="turnpill red">
+            <div class="who" id="whoP1">你</div>
+            <div class="role" id="roleP1">红方</div>
+          </div>
+          <div id="pillP2" class="turnpill blue">
+            <div class="who" id="whoP2">AI</div>
+            <div class="role" id="roleP2">蓝方</div>
+          </div>
+        </div>
+        <div class="statusline" id="statusline">准备开始</div>
+        <div class="aiinfo" id="aiinfo" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card">
+        <h3>设置</h3>
+        <div class="field">
+          <label>玩法</label>
+          <div class="seg" id="segMode">
+            <button type="button" data-v="classic" class="on">经典模式</button>
+            <button type="button" data-v="flip">翻棋模式</button>
+            <button type="button" data-v="mini">四乘四翻棋</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>对手</label>
+          <div class="seg" id="segOpp">
+            <button type="button" data-v="ai" class="on">人机对战</button>
+            <button type="button" data-v="human">双人同屏</button>
+          </div>
+        </div>
+        <div class="field" id="diffField">
+          <label>难度</label>
+          <div class="seg" id="segDiff">
+            <button type="button" data-v="easy">简单</button>
+            <button type="button" data-v="normal" class="on">普通</button>
+            <button type="button" data-v="hard">困难</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>先手</label>
+          <div class="seg" id="segFirst">
+            <button type="button" data-v="p1" class="on">我先行</button>
+            <button type="button" data-v="p2">AI 先行</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>被吃掉的棋子</h3>
+        <div class="eaten">
+          <div class="row"><span class="lbl">红</span><span id="eaten-red"></span></div>
+          <div class="row"><span class="lbl">蓝</span><span id="eaten-blue"></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>棋力阶梯</h3>
+        <div class="ladder">
+          <div class="rung"><b>8</b><span class="lbl">象</span><span class="note">
+            <span data-note="full">最强，但被鼠克制</span><span data-note="mini">最强，但被鼠克制</span></span></div>
+          <div class="rung"><b>7</b><span class="lbl">狮</span><span class="note">
+            <span data-note="full">可横竖跳河</span><span data-note="mini">只能走一格</span></span></div>
+          <div class="rung"><b>6</b><span class="lbl">虎</span><span class="note">
+            <span data-note="full">可横竖跳河</span><span data-note="mini">只能走一格</span></span></div>
+          <div class="rung"><b>5</b><span class="lbl">豹</span><span class="note">—</span></div>
+          <div class="rung"><b>4</b><span class="lbl">狼</span><span class="note">—</span></div>
+          <div class="rung"><b>3</b><span class="lbl">狗</span><span class="note">—</span></div>
+          <div class="rung"><b>2</b><span class="lbl">猫</span><span class="note">—</span></div>
+          <div class="rung special"><b>1</b><span class="lbl">鼠</span><span class="note">
+            <span data-note="full">可下水 · 可吃象 · 水中不被岸上吃</span><span data-note="mini">可吃象 · 不会被象吃</span></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>棋谱</h3>
+        <div class="log" id="log"><div class="entry">开局，红先。</div></div>
+      </div>
+
+    </aside>
+  </div>
+</div>
+
+<!-- ======================= 结果弹窗 ======================= -->
+<div class="overlay hidden" id="modalResult">
+  <div class="modal">
+    <h2 id="resultTitle">对局结束</h2>
+    <div id="resultBody" class="winline"></div>
+    <div class="field" style="margin-top:14px">
+      <label>难度</label>
+      <div class="seg" id="resultDiff">
+        <button type="button" data-d="easy">简单</button>
+        <button type="button" data-d="normal" class="on">普通</button>
+        <button type="button" data-d="hard">困难</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnAgain" type="button">再来一局</button>
+      <button class="btn ghost" type="button" data-close="Result">看看棋盘</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 规则弹窗 ======================= -->
+<div class="overlay hidden" id="modalRules">
+  <div class="modal rules">
+    <h2 id="rulesTitle">规则</h2>
+    <div class="sub">两种玩法的胜负条件完全一致，区别只在「开局信息」。</div>
+
+    <dl>
+      <dt data-rule-for="all">走法（通用）</dt>
+      <dd data-rule-for="all">每回合把一枚己方棋子向上下左右走一格。</dd>
+
+      <dt data-rule-for="all">吃子（通用）</dt>
+      <dd data-rule-for="all">战力大者吃小者，同级可互吃。唯一例外：<b>鼠可以吃象，象不能吃鼠</b>。</dd>
+
+      <dt data-rule-for="classic flip">棋盘</dt>
+      <dd data-rule-for="classic flip">7 列 × 9 行。中间 5 列 × 3 行是河流；两端中央的方格是兽穴（红 D1 / 蓝 D9），
+          兽穴周围各 3 格是对方的陷阱（红 C1、E1、D2；蓝 C9、E9、D8）。</dd>
+
+      <dt data-rule-for="classic flip">河流</dt>
+      <dd data-rule-for="classic flip">鼠可以下水，其他棋子不能进入河流。
+          狮、虎还能横着或竖着跳过整条河，但河中间的路径上不能有任何棋子。
+          水中的鼠不能被岸上的棋子吃，水中的鼠也吃不到岸上的棋子。</dd>
+
+      <dt data-rule-for="classic flip">陷阱</dt>
+      <dd data-rule-for="classic flip">棋子走进<b>对方的陷阱</b>后战力变为 0，任何棋子都能吃掉它；
+          同时它自己也吃不掉任何棋子。自己的陷阱不影响战力。</dd>
+
+      <dt data-rule-for="classic flip">胜负</dt>
+      <dd data-rule-for="classic flip">①走进对方兽穴即胜（不能进入自己的兽穴）；②吃掉对方全部棋子即胜；
+          ③对方无子可动即负；④连续 120 个半回合无吃子判和。</dd>
+
+      <dt data-rule-for="classic">经典模式</dt>
+      <dd data-rule-for="classic">双方棋子按固定位置明摆，红方先行。适合学习规则与纯策略对弈。</dd>
+
+      <dt data-rule-for="flip">翻棋模式</dt>
+      <dd data-rule-for="flip">16 枚棋子背面朝上随机落在经典开局的 16 个位置上，双方都不知道底下是什么。
+          每回合你可以选择<b>翻开</b>任意一枚暗子，或移动一枚已翻开的己方棋子——整局都可以翻，
+          不只是开局。<b>先翻开的那一枚的颜色，决定你整局执什么颜色</b>。
+          暗子占位挡路，双方都不能进入、更不能吃。
+          被吃掉的暗子如果从未翻开，双方都不会知道它是什么——这正是翻棋最有趣的地方。</dd>
+
+      <dt data-rule-for="mini">四乘四棋盘</dt>
+      <dd data-rule-for="mini">4 列 × 4 行，共 16 格，<b>铺满</b>暗子。
+          没有河流、没有陷阱、也没有兽穴——纯粹比拼吃子与翻子的取舍，一局很快。</dd>
+
+      <dt data-rule-for="mini">玩法</dt>
+      <dd data-rule-for="mini">和标准翻棋一样：每回合<b>翻开</b>一枚暗子，或者移动一枚已翻开的己方棋子；
+          <b>先翻开的那一枚是什么颜色，你整局就执什么颜色</b>（红蓝各 8 枚）。
+          暗子挡路，双方都不能进入、更不能吃。鼠仍然可以吃象，象不能吃鼠。</dd>
+
+      <dt data-rule-for="mini">胜负</dt>
+      <dd data-rule-for="mini">①吃掉对方全部棋子即胜；②对方无子可动即负；
+          ③连续 60 个半回合无吃子判和。<br>
+          <span style="color:#f0c419">由于棋盘小、没有兽穴，每步只走一格，
+          四乘四翻棋很容易打成"换子"局面——什么时候翻、翻在哪里，往往就是胜负手。</span></dd>
+    </dl>
+
+    <div class="actions">
+      <button class="btn primary" type="button" data-close="Rules">明白了</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ======================= 彩蛋 ======================= -->
+<div class="overlay hidden egg-overlay" id="modalEgg">
+  <div class="egg-stage">
+    <div class="egg-confetti" id="eggConfetti"></div>
+    <div class="egg-card">
+      <div class="egg-badge">🥚 彩蛋解锁</div>
+      <h2 class="egg-title" id="eggTitle">王文衡爱玩</h2>
+      <div class="egg-sub">斗兽棋 · 隐藏成就</div>
+      <div class="egg-line" id="eggLine">你已经发现了这个秘密。</div>
+      <div class="egg-piece-row" id="eggPieces"></div>
+      <div class="actions">
+        <button class="btn primary" type="button" data-close="Egg">收下祝福</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * 斗兽棋规则引擎（纯逻辑，无 DOM 依赖，浏览器 / Node 双端可用）
+ * ==================================================================
+ * 支持三种模式：
+ *   1) classic 经典模式：7×9 标准棋盘，棋子明摆，双方全知，红先。
+ *   2) flip    翻棋模式：7×9 标准棋盘，16 枚棋子背面朝上随机落在经典开局点上，
+ *               首翻定色（翻到什么颜色就执什么颜色）。
+ *   3) mini    四乘四翻棋：4×4 棋盘，16 枚棋子背面朝上铺满全场，
+ *               没有河流 / 陷阱 / 兽穴，靠吃子与翻子决出胜负。
+ *
+ * 棋盘几何由「变体（variant）」描述，索引规则统一为：
+ *   索引 i = r * cols + c，r 从 0（红方底线）到 rows-1（蓝方底线）。
+ *   7×9 时 idx(r,c) = r*7+c；4×4 时 idx(r,c) = r*4+c。
+ *   屏幕习惯把最后一行画在最下面，红方在下。
+ *
+ * 标准规则实现要点（详见 使用说明.md）：
+ *   · 8 级战力：象>狮>虎>豹>狼>狗>猫>鼠，鼠可吃象、象不能吃鼠。
+ *   · 河流（中间 5 列 × 3 行）只有鼠能进入；水中的鼠不能被岸上的棋子吃。
+ *   · 狮、虎可横跳 / 竖跳整条河（路径中任一格有子则不能跳）。
+ *   · 陷阱：进入对方陷阱的棋子战力变为 0，可被任意棋子吃掉。
+ *   · 兽穴：走进对方兽穴即胜；不能进入自己的兽穴。
+ *   · 对方棋子全部被吃 / 对方无子可动（被困死）同样判负。
+ *   · 长时间无吃子判和。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) { module.exports = factory(); }
+  else { root.DSQRules = factory(); }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- 常量
+  var COLS = 7, ROWS = 9, SIZE = COLS * ROWS;   // 标准棋盘（默认，保持向后兼容）
+
+  var TYPES = ['rat', 'cat', 'dog', 'wolf', 'leopard', 'tiger', 'lion', 'elephant'];
+  var RANK = { rat: 1, cat: 2, dog: 3, wolf: 4, leopard: 5, tiger: 6, lion: 7, elephant: 8 };
+  var CHARS = { rat: '鼠', cat: '猫', dog: '狗', wolf: '狼', leopard: '豹', tiger: '虎', lion: '狮', elephant: '象' };
+  var EN = { rat: 'Rat', cat: 'Cat', dog: 'Dog', wolf: 'Wolf', leopard: 'Leopard', tiger: 'Tiger', lion: 'Lion', elephant: 'Elephant' };
+  // 评估用基础价值（AI 使用；翻棋里也用来衡量明子）
+  var BASE_VALUE = { rat: 34, cat: 18, dog: 26, wolf: 34, leopard: 48, tiger: 70, lion: 80, elephant: 95 };
+  var COLOR_CN = { red: '红', blue: '蓝' };
+  var COL_LETTERS = 'ABCDEFGH';
+
+  // ---------------------------------------------------------------- 变体（棋盘几何）
+  /**
+   * 每个变体描述一种棋盘。所有几何相关逻辑都通过它分支，
+   * 这样"标准 7×9"与"四乘四"可以共用同一套走子 / 吃子 / 胜负代码。
+   */
+  var VARIANTS = {
+    full: {
+      id: 'full',
+      name: '标准棋盘 7×9',
+      rows: 9, cols: 7,
+      hasRiver: true, hasTraps: true, hasDens: true,
+      hidden: false,          // 棋子是否默认背面朝上
+      quietLimit: 120
+    },
+    mini: {
+      id: 'mini',
+      name: '四乘四棋盘 4×4',
+      rows: 4, cols: 4,
+      hasRiver: false, hasTraps: false, hasDens: false,
+      hidden: true,
+      quietLimit: 60
+    }
+  };
+
+  /** 取状态对应的变体；缺省回退到标准棋盘 */
+  function variantOf(st) { return (st && VARIANTS[st.variant]) || VARIANTS.full; }
+
+  // ---------------------------------------------------------------- 棋盘几何
+  // 说明：公开的 idx / rowOf / colOf / posName 保留第三个可选参数 cols，
+  //       默认 7（标准棋盘），从而完全兼容既有调用与既有测试。
+  function idx(r, c, cols) { return r * (cols || COLS) + c; }
+  function rowOf(i, cols) { return (i / (cols || COLS)) | 0; }
+  function colOf(i, cols) { return i % (cols || COLS); }
+
+  function dimsOf(st) {
+    var v = variantOf(st);
+    return { rows: v.rows, cols: v.cols, size: v.rows * v.cols, variant: v };
+  }
+  function inBoard(r, c, rows, cols) {
+    rows = rows || ROWS; cols = cols || COLS;
+    return r >= 0 && r < rows && c >= 0 && c < cols;
+  }
+  function inBoardOf(st, r, c) {
+    var v = variantOf(st);
+    return r >= 0 && r < v.rows && c >= 0 && c < v.cols;
+  }
+
+  /** 河流：标准棋盘第 3~5 行、第 1~5 列；四乘四没有河流 */
+  function isRiver(r, c, variant) {
+    var v = (typeof variant === 'string' ? VARIANTS[variant] : variant) || VARIANTS.full;
+    if (!v.hasRiver) return false;
+    return r >= 3 && r <= 5 && c >= 1 && c <= 5;
+  }
+  function isRiverIdx(i, cols, variant) {
+    return isRiver(rowOf(i, cols), colOf(i, cols), variant);
+  }
+
+  function denOwner(r, c, variant) {
+    var v = (typeof variant === 'string' ? VARIANTS[variant] : variant) || VARIANTS.full;
+    if (!v.hasDens) return null;
+    if (r === 0 && c === 3) return 'red';
+    if (r === 8 && c === 3) return 'blue';
+    return null;
+  }
+  function denIdx(color, cols) {
+    return color === 'red' ? idx(0, 3, cols) : idx(8, 3, cols);
+  }
+
+  var TRAPS = {
+    red: [idx(0, 2), idx(0, 4), idx(1, 3)],
+    blue: [idx(8, 2), idx(8, 4), idx(7, 3)]
+  };
+  var TRAP_OWNER = {};
+  TRAPS.red.forEach(function (i) { TRAP_OWNER[i] = 'red'; });
+  TRAPS.blue.forEach(function (i) { TRAP_OWNER[i] = 'blue'; });
+
+  function trapOwnerIdx(i, variant) {
+    var v = (typeof variant === 'string' ? VARIANTS[variant] : variant) || VARIANTS.full;
+    if (!v.hasTraps) return null;
+    return TRAP_OWNER[i] || null;
+  }
+  function isTrapIdx(i, variant) { return trapOwnerIdx(i, variant) !== null; }
+
+  /** 经典开局：红方 0~2 行，蓝方 6~8 行，180° 中心对称 */
+  var CLASSIC_SETUP = {
+    red: {
+      lion: idx(0, 0), tiger: idx(0, 6), dog: idx(1, 1), cat: idx(1, 5),
+      rat: idx(2, 0), leopard: idx(2, 2), wolf: idx(2, 4), elephant: idx(2, 6)
+    },
+    blue: {
+      tiger: idx(8, 0), lion: idx(8, 6), cat: idx(7, 1), dog: idx(7, 5),
+      elephant: idx(6, 0), wolf: idx(6, 2), leopard: idx(6, 4), rat: idx(6, 6)
+    }
+  };
+
+  /** 16 个经典开局格（标准翻棋的摆子位置） */
+  function classicSquares() {
+    var out = [];
+    ['red', 'blue'].forEach(function (color) {
+      Object.keys(CLASSIC_SETUP[color]).forEach(function (t) { out.push(CLASSIC_SETUP[color][t]); });
+    });
+    return out;
+  }
+
+  /** 四乘四：16 个格子全部摆子 */
+  function miniSquares() {
+    var out = [];
+    for (var i = 0; i < 16; i++) out.push(i);
+    return out;
+  }
+
+  /** 某个变体的全部摆子格 */
+  function squaresOf(variant) {
+    return variant === 'mini' ? miniSquares() : classicSquares();
+  }
+
+  function enemy(color) { return color === 'red' ? 'blue' : 'red'; }
+  function otherPlayer(p) { return p === 'p1' ? 'p2' : 'p1'; }
+
+  // ---------------------------------------------------------------- 随机数
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuffle(arr, rnd) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = (rnd() * (i + 1)) | 0;
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  // ---------------------------------------------------------------- 状态构造
+  /**
+   * @param {'classic'|'flip'|'mini'} mode
+   * @param {{seed?:number, first?:'p1'|'p2', record?:boolean}} opts
+   */
+  function createState(mode, opts) {
+    opts = opts || {};
+    if (mode !== 'classic' && mode !== 'flip' && mode !== 'mini') {
+      throw new Error('未知模式: ' + mode);
+    }
+    var variantId = (mode === 'mini') ? 'mini' : 'full';
+    var v = VARIANTS[variantId];
+    var rnd = mulberry32(opts.seed === undefined ? ((Math.random() * 0xffffffff) >>> 0) : opts.seed);
+    var size = v.rows * v.cols;
+
+    var st = {
+      mode: mode,
+      variant: variantId,
+      rows: v.rows,
+      cols: v.cols,
+      size: size,
+      quietLimit: v.quietLimit,
+      flipMode: (mode !== 'classic'),     // 经典模式无暗子；flip / mini 都有
+      turn: opts.first || 'p1',
+      phase: 'play',
+      winner: null,
+      winReason: null,
+      board: new Array(size).fill(null),
+      colorOf: { p1: null, p2: null },
+      pool: [],                 // 尚未翻开的棋子身份
+      hiddenCount: 0,
+      quiet: 0,
+      ply: 0,
+      nextId: 1,
+      seed: opts.seed === undefined ? null : opts.seed,
+      record: opts.record !== false,
+      log: opts.record === false ? null : [],
+      lastAction: null,
+      lastMove: null
+    };
+
+    if (mode === 'classic') {
+      st.colorOf = { p1: 'red', p2: 'blue' };
+      ['red', 'blue'].forEach(function (color) {
+        Object.keys(CLASSIC_SETUP[color]).forEach(function (t) {
+          st.board[CLASSIC_SETUP[color][t]] = { id: st.nextId++, type: t, color: color };
+        });
+      });
+      st.flipMode = false;
+    } else {
+      // flip / mini：棋子背面朝上随机铺开
+      var tiles = [];
+      TYPES.forEach(function (t) {
+        tiles.push({ type: t, color: 'red' });
+        tiles.push({ type: t, color: 'blue' });
+      });
+      shuffle(tiles, rnd);
+      var squares = shuffle(squaresOf(variantId).slice(), rnd);
+      for (var i = 0; i < squares.length; i++) {
+        var tile = tiles[i];
+        st.board[squares[i]] = { id: st.nextId++, hidden: true, type: tile.type, color: tile.color };
+        st.pool.push({ type: tile.type, color: tile.color });
+      }
+      st.hiddenCount = squares.length;
+    }
+    return st;
+  }
+
+  /** 深拷贝棋子对象：避免不同状态之间共享引用而被外部意外改写 */
+  function copyPieces(board) {
+    var out = new Array(board.length);
+    for (var i = 0; i < board.length; i++) {
+      var p = board[i];
+      if (!p) { out[i] = null; continue; }
+      var q = { id: p.id };
+      if (p.hidden) q.hidden = true;
+      q.type = p.type;
+      q.color = p.color;
+      out[i] = q;
+    }
+    return out;
+  }
+
+  function cloneInto(s, st, keepLog) {
+    s.mode = st.mode;
+    s.variant = st.variant;
+    s.rows = st.rows;
+    s.cols = st.cols;
+    s.size = st.size;
+    s.quietLimit = st.quietLimit;
+    s.flipMode = st.flipMode;
+    s.turn = st.turn;
+    s.phase = st.phase;
+    s.winner = st.winner;
+    s.winReason = st.winReason;
+    s.board = copyPieces(st.board);
+    s.colorOf = { p1: st.colorOf.p1, p2: st.colorOf.p2 };
+    s.pool = st.pool ? st.pool.map(function (t) { return { type: t.type, color: t.color }; }) : null;
+    s.hiddenCount = st.hiddenCount;
+    s.quiet = st.quiet;
+    s.ply = st.ply;
+    s.nextId = st.nextId;
+    s.record = keepLog ? st.record : false;
+    s.log = (keepLog && st.log) ? st.log.slice() : null;
+    s.lastAction = st.lastAction;
+    s.lastMove = st.lastMove ? { from: st.lastMove.from, to: st.lastMove.to } : null;
+    s.seed = st.seed;
+    return s;
+  }
+
+  /** 深拷贝（搜索时用 record:false 的状态可省掉日志拷贝） */
+  function cloneState(st) { return cloneInto({}, st, true); }
+  /** 供 AI 使用的轻量克隆：不带日志 */
+  function cloneForSearch(st) { return cloneInto({}, st, false); }
+
+  // ---------------------------------------------------------------- 战力
+  /** 棋子在该格的实战战力（在对方陷阱里为 0）；四乘四没有陷阱 */
+  function effRank(piece, pos, variant) {
+    if (!piece) return -1;
+    var owner = trapOwnerIdx(pos, variant);
+    if (owner !== null && owner !== piece.color) return 0;
+    return RANK[piece.type];
+  }
+
+  function canCapture(attacker, defender, from, to, variant) {
+    var ar = effRank(attacker, from, variant);
+    var dr = effRank(defender, to, variant);
+    if (ar === 0) return false;                       // 自己陷在对方陷阱里，打不动任何子
+    if (dr === 0) return true;                        // 对方陷在陷阱里，谁都能吃
+    if (attacker.type === 'rat' && defender.type === 'elephant') return true;
+    if (attacker.type === 'elephant' && defender.type === 'rat') return false;
+    return ar >= dr;
+  }
+
+  // ---------------------------------------------------------------- 走法生成
+  var DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+  function pushedTarget(st, piece, from, to, out) {
+    var v = variantOf(st);
+    var r = rowOf(to, st.cols), c = colOf(to, st.cols);
+    var owner = denOwner(r, c, v);
+    if (owner && owner === piece.color) return;        // 不能进自己的兽穴
+    var target = st.board[to];
+    if (target && target.hidden) return;               // 暗子挡路，不可进入
+    if (target && target.color === piece.color) return;
+    var waterTo = isRiver(r, c, v);
+    if (waterTo && piece.type !== 'rat') return;       // 只有鼠能下水
+    if (target) {
+      // 水陆之间互不相吃（水中的鼠吃不到岸上，岸上也吃不到水中）
+      if (waterTo !== isRiverIdx(from, st.cols, v)) return;
+      if (!canCapture(piece, target, from, to, v)) return;
+    }
+    out.push(to);
+  }
+
+  /** 某个棋子的全部合法落点 */
+  function pieceMoves(st, from) {
+    var p = st.board[from];
+    if (!p || p.hidden) return [];
+    var v = variantOf(st);
+    var r = rowOf(from, st.cols), c = colOf(from, st.cols);
+    var out = [];
+    for (var d = 0; d < 4; d++) {
+      var dr = DIRS[d][0], dc = DIRS[d][1];
+      var nr = r + dr, nc = c + dc;
+      if (inBoardOf(st, nr, nc)) pushedTarget(st, p, from, idx(nr, nc, st.cols), out);
+      // 狮虎跳河：仅标准棋盘有河流
+      if (v.hasRiver && (p.type === 'tiger' || p.type === 'lion')) {
+        var jr = nr, jc = nc, crossed = 0;
+        while (inBoardOf(st, jr, jc) && isRiver(jr, jc, v)) { jr += dr; jc += dc; crossed++; }
+        if (crossed > 0 && inBoardOf(st, jr, jc)) {
+          var clear = true, tr = nr, tc = nc;
+          for (var s = 0; s < crossed; s++) {
+            if (st.board[idx(tr, tc, st.cols)]) { clear = false; break; }
+            tr += dr; tc += dc;
+          }
+          if (clear) pushedTarget(st, p, from, idx(jr, jc, st.cols), out);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** 当前行动方的全部合法动作 */
+  function legalActions(st) {
+    if (st.phase !== 'play') return [];
+    var out = [];
+    var P = st.turn, myColor = st.colorOf[P];
+    if (st.flipMode) {
+      for (var i = 0; i < st.size; i++) {
+        var pc = st.board[i];
+        if (pc && pc.hidden) out.push({ kind: 'flip', at: i });
+      }
+    }
+    if (!myColor) return out;
+    for (var j = 0; j < st.size; j++) {
+      var q = st.board[j];
+      if (!q || q.hidden || q.color !== myColor) continue;
+      var ms = pieceMoves(st, j);
+      for (var k = 0; k < ms.length; k++) out.push({ kind: 'move', from: j, to: ms[k] });
+    }
+    return out;
+  }
+
+  function actionsForPiece(st, from) {
+    var p = st.board[from];
+    if (!p || p.hidden) return [];
+    if (st.colorOf[st.turn] !== p.color) return [];
+    return pieceMoves(st, from).map(function (to) { return { kind: 'move', from: from, to: to }; });
+  }
+
+  // ---------------------------------------------------------------- 执行动作
+  function endGame(st, winner, reason) {
+    st.phase = 'over';
+    st.winner = winner;
+    st.winReason = reason;
+    return st;
+  }
+
+  /**
+   * 执行动作并返回新状态（不修改入参）。
+   * 翻棋类玩法：action.tile 可选，用于“未知身份”的模拟搜索；
+   *             真实对局中省略，直接取该格暗子的真实身份。
+   */
+  function applyAction(st0, action) {
+    if (st0.phase !== 'play' || !action) return cloneState(st0);
+
+    // ---- 先完整校验，非法动作必须完全不改变状态 ----
+    if (action.kind === 'flip') {
+      var c0 = st0.board[action.at];
+      if (!c0 || !c0.hidden) return cloneState(st0);
+    } else if (action.kind === 'move') {
+      var p0 = st0.board[action.from];
+      var t0 = st0.board[action.to];
+      if (!p0 || p0.hidden) return cloneState(st0);
+      if (t0 && t0.hidden) return cloneState(st0);       // 不能吃暗子
+      if (p0.color !== st0.colorOf[st0.turn]) return cloneState(st0);
+      if (pieceMoves(st0, action.from).indexOf(action.to) < 0) return cloneState(st0);
+    } else {
+      return cloneState(st0);
+    }
+
+    var st = cloneState(st0);
+    st.ply++;
+    st.quiet++;
+    st.lastAction = action;
+
+    if (action.kind === 'flip') {
+      var cell = st.board[action.at];
+      var tile = action.tile || { type: cell.type, color: cell.color };
+      // 从待翻池里移除
+      if (st.pool) {
+        for (var i = 0; i < st.pool.length; i++) {
+          if (st.pool[i].type === tile.type && st.pool[i].color === tile.color) { st.pool.splice(i, 1); break; }
+        }
+      }
+      st.hiddenCount = Math.max(0, st.hiddenCount - 1);
+      st.board[action.at] = { id: cell.id, type: tile.type, color: tile.color };
+      var P = st.turn;
+      if (!st.colorOf[P]) {                 // 首翻定色
+        st.colorOf[P] = tile.color;
+        st.colorOf[otherPlayer(P)] = enemy(tile.color);
+      }
+      st.quiet = 0;
+      if (st.log) st.log.push({ action: action, tile: tile, color: tile.color });
+      st.turn = otherPlayer(P);
+      return finishTurn(st);
+    }
+
+    if (action.kind === 'move') {
+      var p = st.board[action.from];
+      var target = st.board[action.to];
+      st.board[action.from] = null;
+      st.board[action.to] = p;
+      st.lastMove = { from: action.from, to: action.to };
+      var captured = target || null;
+      if (captured) st.quiet = 0;
+      if (st.log) st.log.push({ action: action, piece: p, captured: captured });
+      var r = rowOf(action.to, st.cols), c = colOf(action.to, st.cols);
+      if (denOwner(r, c, variantOf(st)) === enemy(p.color)) {
+        return endGame(st, p.color, '攻入对方兽穴');
+      }
+      st.turn = otherPlayer(st.turn);
+      return finishTurn(st);
+    }
+
+    return st;
+  }
+
+  /** 轮转后处理：判和 / 判负 */
+  function finishTurn(st) {
+    if (st.phase !== 'play') return st;
+    if (st.quiet >= st.quietLimit) return endGame(st, null, '长时间无吃子，判和');
+    var nextP = st.turn;
+    // 下一方没有任何可行动作 → 判负
+    if (legalActions(st).length === 0) {
+      var moverColor = st.colorOf[otherPlayer(nextP)];
+      return endGame(st, moverColor || null, '对方无子可动');
+    }
+    // 下一方没有任何棋子（且无暗子可翻）→ 判负
+    var nextColor = st.colorOf[nextP];
+    if (nextColor) {
+      var has = false;
+      for (var i = 0; i < st.size; i++) {
+        var q = st.board[i];
+        if (q && !q.hidden && q.color === nextColor) { has = true; break; }
+      }
+      if (!has && (!st.pool || st.pool.length === 0)) {
+        return endGame(st, enemy(nextColor), '对方棋子全部被吃');
+      }
+    }
+    return st;
+  }
+
+  // ---------------------------------------------------------------- 工具
+  function pieceAt(st, i) { return st.board[i] || null; }
+  function piecesOf(st, color) {
+    var out = [];
+    for (var i = 0; i < st.size; i++) {
+      var p = st.board[i];
+      if (p && !p.hidden && p.color === color) out.push({ pos: i, piece: p });
+    }
+    return out;
+  }
+  function countColor(st, color) { return piecesOf(st, color).length; }
+  /** 统计某颜色在场上的棋子总数（含尚未翻开的暗子）。翻棋中"存活数"必须用它。 */
+  function countColorTotal(st, color) {
+    var n = 0;
+    for (var i = 0; i < st.size; i++) {
+      var p = st.board[i];
+      if (p && p.color === color) n++;
+    }
+    return n;
+  }
+  function hiddenTiles(st) {
+    var out = [];
+    for (var i = 0; i < st.size; i++) { if (st.board[i] && st.board[i].hidden) out.push(i); }
+    return out;
+  }
+  function posName(i, cols) {
+    return COL_LETTERS[colOf(i, cols)] + (rowOf(i, cols) + 1);
+  }
+  function colorName(color) { return color === 'red' ? '红方' : '蓝方'; }
+  function describeAction(st, a) {
+    if (!a) return '';
+    var cols = st ? st.cols : COLS;
+    if (a.kind === 'flip') return '翻子 ' + posName(a.at, cols);
+    var mover = st.board[a.from];
+    var label = mover ? (COLOR_CN[mover.color] + CHARS[mover.type]) : '棋子';
+    var tgt = st.board[a.to];
+    return label + ' ' + posName(a.from, cols) + '→' + posName(a.to, cols) +
+      (tgt && !tgt.hidden ? ' 吃' + COLOR_CN[tgt.color] + CHARS[tgt.type] : '');
+  }
+  /** 每种棋子一个唯一字符，用于局面指纹（不能取首字母：lion / leopard 会撞车） */
+  var HASH_CHAR = {
+    rat: 'r', cat: 'c', dog: 'd', wolf: 'w',
+    leopard: 'L', tiger: 't', lion: 'N', elephant: 'e'
+  };
+
+  /** 简单局面指纹（用于重复局面/缓存，不含暗子真实身份之外的隐藏信息） */
+  function hashState(st) {
+    var s = st.turn + '|' + st.variant + '|' + st.mode + '|';
+    for (var i = 0; i < st.size; i++) {
+      var p = st.board[i];
+      if (!p) { s += '.'; continue; }
+      if (p.hidden) { s += '#'; continue; }
+      s += (p.color === 'red' ? 'R' : 'B') + HASH_CHAR[p.type];
+    }
+    if (st.pool) {
+      var counts = {};
+      st.pool.forEach(function (t) { var k = t.color + t.type; counts[k] = (counts[k] || 0) + 1; });
+      Object.keys(counts).sort().forEach(function (k) { s += k + counts[k]; });
+    }
+    return s;
+  }
+
+  return {
+    COLS: COLS, ROWS: ROWS, SIZE: SIZE, QUIET_LIMIT: 120,
+    VARIANTS: VARIANTS,
+    TYPES: TYPES, RANK: RANK, CHARS: CHARS, EN: EN, BASE_VALUE: BASE_VALUE, COLOR_CN: COLOR_CN,
+    CLASSIC_SETUP: CLASSIC_SETUP, TRAPS: TRAPS, COL_LETTERS: COL_LETTERS,
+    idx: idx, rowOf: rowOf, colOf: colOf, inBoard: inBoard,
+    isRiver: isRiver, isRiverIdx: isRiverIdx, denOwner: denOwner, denIdx: denIdx,
+    isTrapIdx: isTrapIdx, trapOwnerIdx: trapOwnerIdx,
+    variantOf: variantOf, dimsOf: dimsOf, squaresOf: squaresOf, miniSquares: miniSquares,
+    enemy: enemy, otherPlayer: otherPlayer,
+    createState: createState, cloneState: cloneState, cloneForSearch: cloneForSearch,
+    effRank: effRank, canCapture: canCapture,
+    pieceMoves: pieceMoves, legalActions: legalActions, actionsForPiece: actionsForPiece,
+    applyAction: applyAction,
+    pieceAt: pieceAt, piecesOf: piecesOf, countColor: countColor, countColorTotal: countColorTotal,
+    hiddenTiles: hiddenTiles,
+    posName: posName, colorName: colorName, describeAction: describeAction, hashState: hashState,
+    shuffle: shuffle, mulberry32: mulberry32, classicSquares: classicSquares
+  };
+});
+
+</script>
+<script>
+/**
+ * 斗兽棋 AI（纯逻辑，浏览器 / Node 双端可用）
+ * ------------------------------------------------------------------
+ * 经典模式：全知信息 → Alpha-Beta 迭代加深 + 静态评估 + 置换表。
+ * 翻棋模式：隐藏信息 → 期望最大化（Expectimax）。
+ *           对每个“翻子”动作，按剩余未知池的真实分布枚举可能身份并求期望；
+ *           AI 自己不知道暗子身份，因此不会作弊。
+ *
+ * 难度：easy / normal / hard，对应搜索深度、随机性与思考时间。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./rules.js'));
+  } else {
+    root.DSQAI = factory(root.DSQRules);
+  }
+})(typeof self !== 'undefined' ? self : this, function (R) {
+  'use strict';
+
+  var WIN = 1e6;
+  var INF = 1e9;
+
+  var DIFFICULTY = {
+    easy:   { depth: 2, timeMs: 400,  noise: 90, name: '简单', flipDepth: 2 },
+    normal: { depth: 4, timeMs: 1400, noise: 18, name: '普通', flipDepth: 3 },
+    hard:   { depth: 6, timeMs: 3200, noise: 0,  name: '困难', flipDepth: 4 }
+  };
+
+  // 位置权重：靠近对方兽穴 / 占据要道更有价值。
+  // 通过 st 读取棋盘尺寸，因而同时适用于 7×9 与 4×4。
+  function posBonus(i, color, st) {
+    var cols = st ? st.cols : R.COLS;
+    var rows = st ? st.rows : R.ROWS;
+    var v = st ? R.variantOf(st) : R.VARIANTS.full;
+    var r = R.rowOf(i, cols), c = R.colOf(i, cols);
+    var lastRow = rows - 1;
+    var mid = (cols - 1) / 2;
+    // 推进奖励：越靠近对方底线越好
+    var adv = color === 'red' ? r : (lastRow - r);
+    var bonus = adv * 1.6;
+    var dc = Math.abs(c - mid);
+    if (r === (color === 'red' ? lastRow : 0)) bonus += (mid - dc + 1) * 22;  // 逼近对方底线
+    if (R.denOwner(r, c, v) === R.enemy(color)) bonus += 60;
+    // 陷阱：冲进对方陷阱很危险
+    var t = R.trapOwnerIdx(i, v);
+    if (t === R.enemy(color)) bonus -= 26;
+    return bonus;
+  }
+
+  /** 从 color 视角评估局面（分数越高对 color 越有利） */
+  function evaluate(st, color) {
+    if (st.phase === 'over') {
+      if (st.winner === color) return WIN - st.ply;
+      if (st.winner === null) return 0;
+      return -WIN + st.ply;
+    }
+    var v = R.variantOf(st);
+    var me = color, you = R.enemy(color);
+    var score = 0;
+    var myMoves = 0, yourMoves = 0;
+    var myCount = 0, yourCount = 0;
+
+    for (var i = 0; i < st.size; i++) {
+      var p = st.board[i];
+      if (!p || p.hidden) continue;
+      var s = (p.color === me) ? 1 : -1;
+      var val = R.BASE_VALUE[p.type] + posBonus(i, p.color, st);
+      // 处于对方陷阱中的棋子非常危险
+      var tOwn = R.trapOwnerIdx(i, v);
+      if (tOwn && tOwn !== p.color) val -= R.BASE_VALUE[p.type] * 0.45;
+      score += s * val;
+      if (p.color === me) myCount++; else yourCount++;
+    }
+    // 暗子：身份未知，但其"颜色归属"和"池的构成"是公开信息。
+    // 用剩余池的平均子力近似其价值，避免把暗子当成 0 子力。
+    if (st.hiddenCount > 0 && st.pool && st.pool.length) {
+      var sumByColor = {}, cntByColor = {};
+      for (var k = 0; k < st.pool.length; k++) {
+        var tl = st.pool[k];
+        sumByColor[tl.color] = (sumByColor[tl.color] || 0) + R.BASE_VALUE[tl.type];
+        cntByColor[tl.color] = (cntByColor[tl.color] || 0) + 1;
+      }
+      ['red', 'blue'].forEach(function (cc) {
+        var n = cntByColor[cc] || 0;
+        if (!n) return;
+        var avg = sumByColor[cc] / n;
+        var sign = (cc === me) ? 1 : -1;
+        // 折扣：暗子可控性差，且可能被白吃
+        score += sign * avg * n * 0.55;
+        if (cc === me) myCount += n; else yourCount += n;
+      });
+    }
+    // 机动性
+    var acts = R.legalActions(st);
+    var mover = st.colorOf[st.turn] || 'red';
+    for (var a = 0; a < acts.length; a++) {
+      if (acts[a].kind !== 'move') continue;
+      if (mover === me) myMoves++; else yourMoves++;
+    }
+    score += (myMoves - yourMoves) * 1.2;
+
+    // 直接威胁对方兽穴（仅标准棋盘有兽穴）
+    if (v.hasDens) {
+      var enemyDen = R.denIdx(you, st.cols);
+      var dr0 = R.rowOf(enemyDen, st.cols), dc0 = R.colOf(enemyDen, st.cols);
+      for (var d = -1; d <= 1; d += 2) {
+        var rr = dr0 + d;
+        if (rr < 0 || rr >= st.rows) continue;
+        var at = R.idx(rr, dc0, st.cols);
+        var q = st.board[at];
+        if (q && !q.hidden && q.color === me) {
+          score += (q.type === 'rat' && R.isRiver(rr, dc0, v)) ? 8 : 42;
+        }
+      }
+    }
+    // 子力耗尽 / 无子可动会输，提前感知。
+    // 注意：只有当场上没有暗子（全部身份公开）时才能判定"全灭"。
+    // 翻棋里一方可能 0 枚明子但仍有暗子，那不是输。
+    if (st.hiddenCount === 0 || !st.pool || st.pool.length === 0) {
+      if (myCount === 0) return -WIN + st.ply;
+      if (yourCount === 0) return WIN - st.ply;
+    }
+    if (st.quiet > st.quietLimit * 0.75) score *= 0.9;   // 接近判和时收敛
+    return score;
+  }
+
+  /** 排序：吃子优先、进攻优先，提高剪枝效率 */
+  function orderActions(st, actions, color) {
+    var scored = [];
+    for (var i = 0; i < actions.length; i++) {
+      var a = actions[i], sc = 0;
+      if (a.kind === 'move') {
+        var t = st.board[a.to];
+        if (t && !t.hidden) sc += 100 + R.BASE_VALUE[t.type] * 1.5;
+        var p = st.board[a.from];
+        if (p) {
+          sc += posBonus(a.to, p.color, st) - posBonus(a.from, p.color, st);
+          var tr = R.rowOf(a.to, st.cols), tc = R.colOf(a.to, st.cols);
+          if (R.denOwner(tr, tc, R.variantOf(st)) === R.enemy(p.color)) sc += 5000;
+        }
+      } else {
+        sc += 5;                                     // 翻子略微优先于无效走子
+      }
+      scored.push({ a: a, sc: sc });
+    }
+    scored.sort(function (x, y) { return y.sc - x.sc; });
+    return scored.map(function (o) { return o.a; });
+  }
+
+  // ------------------------------------------------------------- 经典：Alpha-Beta
+  // 只用于全知信息模式（经典）。alpha/beta 窗口在纯极大极小树中安全。
+  function search(st, depth, alpha, beta, color, deadline, ctx) {
+    if ((ctx.nodes++ & 63) === 0 && Date.now() > deadline) ctx.timeout = true;
+    if (ctx.timeout) return evaluate(st, color);
+    if (st.phase === 'over' || depth <= 0) return evaluate(st, color);
+
+    var acts = R.legalActions(st);
+    if (!acts.length) return evaluate(st, color);
+    acts = orderActions(st, acts, color);
+    var maximizing = (st.colorOf[st.turn] === color);
+    var best = maximizing ? -INF : INF;
+
+    for (var i = 0; i < acts.length; i++) {
+      var child = R.applyAction(st, acts[i]);
+      var val = search(child, depth - 1, alpha, beta, color, deadline, ctx);
+      if (maximizing) {
+        if (val > best) best = val;
+        if (best > alpha) alpha = best;
+      } else {
+        if (val < best) best = val;
+        if (best < beta) beta = best;
+      }
+      if (alpha >= beta) break;
+      if (ctx.timeout) break;
+    }
+    return best;
+  }
+
+  // ------------------------------------------------------------- 翻棋：期望最大化
+  /**
+   * 期望搜索（不剪枝，保证期望值正确）。
+   * · 翻子 = 机会节点：按剩余未知池的真实分布枚举身份并取加权平均。
+   * · 走子 = 决策节点：轮到“我”取最大，轮到对手取最小。
+   * AI 永远不会读取暗子的真实身份：翻子分支只使用 pool 中的身份。
+   * @param {?string} color 我的颜色；null 表示首翻前尚不知道自己是谁
+   */
+  function expectSearch(st, depth, color, deadline, ctx) {
+    if ((ctx.nodes++ & 31) === 0 && Date.now() > deadline) ctx.timeout = true;
+    if (ctx.timeout) return evalFromPov(st, color);
+    if (st.phase === 'over' || depth <= 0) return evalFromPov(st, color);
+
+    var acts = R.legalActions(st);
+    if (!acts.length) return evalFromPov(st, color);
+
+    var myColor = color;
+    var turnColor = st.colorOf[st.turn];
+    var maximizing = myColor ? (turnColor === myColor) : true;
+
+    var flips = [], moves = [];
+    for (var i = 0; i < acts.length; i++) {
+      if (acts[i].kind === 'flip') flips.push(acts[i]); else moves.push(acts[i]);
+    }
+    moves = orderActions(st, moves, myColor || turnColor || 'red');
+
+    var best = maximizing ? -INF : INF;
+
+    // ---- 机会节点：翻子（期望值） ----
+    if (flips.length) {
+      var variants = uniquePool(st.pool);
+      if (variants.length) {
+        var total = 0, weight = 0;
+        for (var v = 0; v < variants.length; v++) {
+          var tile = { type: variants[v].type, color: variants[v].color };
+          for (var f = 0; f < flips.length; f++) {
+            var child = R.applyAction(st, { kind: 'flip', at: flips[f].at, tile: tile });
+            var val = expectSearch(child, depth - 1, color, deadline, ctx);
+            total += val * variants[v].count;
+            weight += variants[v].count;
+            if (ctx.timeout) break;
+          }
+          if (ctx.timeout) break;
+        }
+        if (weight > 0) {
+          var ev = total / weight;
+          if (maximizing) { if (ev > best) best = ev; }
+          else { if (ev < best) best = ev; }
+        }
+      }
+    }
+
+    // ---- 决策节点：确定性走子 ----
+    for (var m = 0; m < moves.length; m++) {
+      var mc = R.applyAction(st, moves[m]);
+      var mv = expectSearch(mc, depth - 1, color, deadline, ctx);
+      if (maximizing) { if (mv > best) best = mv; }
+      else { if (mv < best) best = mv; }
+      if (ctx.timeout) break;
+    }
+
+    if (best === -INF || best === INF) return evalFromPov(st, color);
+    return best;
+  }
+
+  /** 把剩余未知池归纳为「身份 + 计数」，供机会节点求期望 */
+  function uniquePool(pool) {
+    if (!pool || !pool.length) return [];
+    var map = {}, out = [];
+    for (var i = 0; i < pool.length; i++) {
+      var k = pool[i].color + '/' + pool[i].type;
+      if (!map[k]) { map[k] = { type: pool[i].type, color: pool[i].color, count: 0 }; out.push(map[k]); }
+      map[k].count++;
+    }
+    return out;
+  }
+
+  /** 颜色视角评分；首翻前（无颜色）用中立评估 */
+  function evalFromPov(st, color) {
+    if (!color) return 0;
+    return evaluate(st, color);
+  }
+
+  /**
+   * 选择动作。
+   * @returns {{action:Object, score:number, nodes:number, ms:number, depth:number}}
+   */
+  function chooseAction(st, options) {
+    options = options || {};
+    var level = DIFFICULTY[options.difficulty] || DIFFICULTY.normal;
+    // 关键：用 st.flipMode（玩法是否含暗子）而不是 st.mode === 'flip'，
+    // 否则 mini 会走全知的 Alpha-Beta 分支，等于偷看暗子身份。
+    var isFlipMode = !!st.flipMode;
+    var depth = options.depth || (isFlipMode ? (level.flipDepth || level.depth) : level.depth);
+    var deadline = Date.now() + (options.timeMs || level.timeMs);
+    var noise = options.noise === undefined ? level.noise : options.noise;
+    var color = st.colorOf[st.turn];
+    var ctx = { timeout: false, nodes: 0 };
+    var t0 = Date.now();
+
+    var acts = R.legalActions(st);
+    if (!acts.length) return { action: null, score: 0, nodes: 0, ms: 0, depth: 0 };
+    if (acts.length === 1 && options.forceFirst !== true) {
+      return { action: acts[0], score: 0, nodes: 0, ms: Date.now() - t0, depth: 0 };
+    }
+
+    // 首翻：还没有阵营信息，用"翻开位置"的启发式选择
+    if (isFlipMode && !color) {
+      return chooseFirstFlip(st, acts, level);
+    }
+
+    var results = [];
+    var ordered = orderActions(st, acts, color);
+    var bestAction = ordered[0], bestScore = -INF;
+
+    for (var i = 0; i < ordered.length; i++) {
+      var a = ordered[i];
+      var val;
+      if (isFlipMode) {
+        if (a.kind === 'flip') {
+          // 机会节点：与内部搜索一致，对未知身份取期望（不偷看暗子真实身份）
+          var vars = uniquePool(st.pool);
+          val = evaluate(st, color);
+          if (vars.length) {
+            var tot = 0, wt = 0;
+            for (var v = 0; v < vars.length; v++) {
+              var ch = R.applyAction(st, { kind: 'flip', at: a.at, tile: { type: vars[v].type, color: vars[v].color } });
+              tot += expectSearch(ch, depth - 1, color, deadline, ctx) * vars[v].count;
+              wt += vars[v].count;
+              if (ctx.timeout) break;
+            }
+            if (wt) val = tot / wt;
+          }
+        } else {
+          val = expectSearch(R.applyAction(st, a), depth - 1, color, deadline, ctx);
+        }
+      } else {
+        val = search(R.applyAction(st, a), depth - 1, -INF, INF, color, deadline, ctx);
+      }
+      ctx.nodes++;
+      var jitter = noise ? (Math.random() - 0.5) * noise : 0;
+      results.push({ action: a, score: val + jitter, raw: val });
+      if (val > bestScore) { bestScore = val; bestAction = a; }
+      if (ctx.timeout) break;
+    }
+
+    if (noise > 0 && results.length > 1) {
+      // 简单难度：在最优的若干手里随机，制造“会失误”的手感
+      var top = results.slice().sort(function (x, y) { return y.score - x.score; });
+      var pool = top.filter(function (r) { return r.score >= top[0].score - noise * 0.9; });
+      var pick = pool[(Math.random() * pool.length) | 0];
+      if (pick && bestScore - pick.raw < noise * 1.5) bestAction = pick.action;
+    }
+
+    return {
+      action: bestAction, score: bestScore,
+      nodes: ctx.nodes, ms: Date.now() - t0, depth: depth
+    };
+  }
+
+  /**
+   * 翻棋首翻：不知道会翻到什么，选择"翻开位置"最有利的一格。
+   * 首翻没有阵营可用，因此用纯位置启发式：靠近中心、便于后续展开。
+   * 位置计算基于 st 的实际尺寸，所以 7×9 与 4×4 都适用。
+   */
+  function chooseFirstFlip(st, acts, level) {
+    var t0 = Date.now();
+    var flips = acts.filter(function (a) { return a.kind === 'flip'; });
+    if (!flips.length) return { action: null, score: 0, nodes: 0, ms: 0, depth: 0 };
+    var cols = st.cols, rows = st.rows;
+    var cx = (cols - 1) / 2, cy = (rows - 1) / 2;
+    var best = flips[0], bestSc = -INF;
+    for (var i = 0; i < flips.length; i++) {
+      var a = flips[i];
+      var r = R.rowOf(a.at, cols), c = R.colOf(a.at, cols);
+      // 中心距离越小越好
+      var sc = -(Math.abs(c - cx) * 2 + Math.abs(r - cy) * 0.8);
+      var jitter = level.noise ? (Math.random() - 0.5) * level.noise * 0.1 : 0;
+      if (sc + jitter > bestSc) { bestSc = sc + jitter; best = a; }
+    }
+    return { action: best, score: 0, nodes: 0, ms: Date.now() - t0, depth: 0 };
+  }
+
+  return {
+    DIFFICULTY: DIFFICULTY,
+    evaluate: evaluate,
+    chooseAction: chooseAction,
+    orderActions: orderActions,
+    uniquePool: uniquePool,
+    posBonus: posBonus
+  };
+});
+
+</script>
+<script>
+/**
+ * 斗兽棋 · 界面与对局流程
+ * 依赖：rules.js（DSQRules）、ai.js（DSQAI）
+ */
+(function () {
+  'use strict';
+  var R = window.DSQRules, AI = window.DSQAI;
+  if (!R || !AI) { document.body.innerHTML = '<p style="padding:20px">脚本加载失败。</p>'; return; }
+
+  var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  // ------------------------------------------------------------ 配置状态
+  var config = {
+    mode: 'classic',            // classic | flip | mini
+    opponent: 'ai',             // ai | human
+    difficulty: 'normal',       // easy | normal | hard
+    humanColor: 'red',          // 经典/翻棋中玩家执色（翻棋定色后自动跟随）
+    first: 'p1',                // p1 = 人类（双人时 = 红方先）
+    soundOn: true
+  };
+
+  var game = {
+    state: null,
+    selected: null,             // 选中的己方棋子索引
+    targets: [],                // 当前可选落点
+    lastMove: null,
+    aiThinking: false,
+    aiTimer: null,
+    over: false,
+    stats: { nodes: 0, ms: 0, depth: 0 },
+    seen: {}                    // 翻棋：已经翻开过的棋子（用于显示"曾出现过"）
+  };
+
+  // ------------------------------------------------------------ 音效（WebAudio，无需资源文件）
+  var audioCtx = null;
+  function beep(freq, dur, type, vol) {
+    if (!config.soundOn) return;
+    try {
+      if (!audioCtx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        audioCtx = new AC();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = type || 'sine'; o.frequency.value = freq;
+      g.gain.value = (vol === undefined ? 0.05 : vol);
+      o.connect(g); g.connect(audioCtx.destination);
+      var t = audioCtx.currentTime;
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t); o.stop(t + dur);
+    } catch (e) { /* 静默失败，不影响游戏 */ }
+  }
+  var SOUND = {
+    select: function () { beep(620, 0.07, 'sine', 0.035); },
+    move: function () { beep(420, 0.09, 'triangle', 0.05); },
+    capture: function () { beep(230, 0.16, 'sawtooth', 0.055); },
+    flip: function () { beep(780, 0.1, 'triangle', 0.045); },
+    win: function () { beep(660, 0.16, 'sine', 0.06); setTimeout(function () { beep(880, 0.26, 'sine', 0.06); }, 140); },
+    lose: function () { beep(300, 0.2, 'sine', 0.05); setTimeout(function () { beep(200, 0.32, 'sine', 0.05); }, 150); },
+    bad: function () { beep(160, 0.14, 'square', 0.04); }
+  };
+
+  // ------------------------------------------------------------ 工具
+  function myColors() {
+    // 人类这局实际执什么颜色
+    return game.state ? game.state.colorOf : { p1: null, p2: null };
+  }
+  /** 当前人类玩家对应的 player 槽位 */
+  function humanPlayer() { return config.first; }
+  function aiPlayer() { return config.first === 'p1' ? 'p2' : 'p1'; }
+
+  function isHumanTurn() {
+    if (!game.state || game.state.phase !== 'play') return false;
+    if (config.opponent === 'human') return true;
+    return game.state.turn === humanPlayer();
+  }
+
+  function pieceLabel(p) {
+    if (!p) return '';
+    if (p.hidden) return '暗子';
+    return (p.color === 'red' ? '红' : '蓝') + R.CHARS[p.type];
+  }
+
+  /** 本回合是否可以翻子（翻棋类玩法任何回合都能翻，这是核心玩法） */
+  function canFlipNow() {
+    var st = game.state;
+    if (!st || !st.flipMode || st.phase !== 'play') return false;
+    return R.hiddenTiles(st).length > 0;
+  }
+  /** 是否处于"首翻定色"阶段（还没有颜色，只能翻） */
+  function needsFlipOnly() {
+    var st = game.state;
+    if (!st || !st.flipMode) return false;
+    return !st.colorOf[st.turn];
+  }
+  /** 当前棋盘的几何信息 */
+  function dims() {
+    var st = game.state;
+    return { rows: st ? st.rows : R.ROWS, cols: st ? st.cols : R.COLS, size: st ? st.size : R.SIZE };
+  }
+
+  // ------------------------------------------------------------ 渲染
+  var boardEl = $('#board');
+
+  function buildBoard() {
+    var d = dims();
+    var variant = game.state ? R.variantOf(game.state) : R.VARIANTS.full;
+    boardEl.innerHTML = '';
+    // 按棋盘比例设置网格：4×4 要显示成正方形
+    boardEl.style.gridTemplateColumns = 'repeat(' + d.cols + ', minmax(0, 1fr))';
+    boardEl.style.gridTemplateRows = 'repeat(' + d.rows + ', minmax(0, 1fr))';
+    boardEl.style.aspectRatio = d.cols + ' / ' + d.rows;
+    boardEl.classList.toggle('mini-board', d.cols === 4);
+    boardEl.dataset.cols = String(d.cols);
+    boardEl.dataset.rows = String(d.rows);
+
+    var frag = document.createDocumentFragment();
+    for (var r = 0; r < d.rows; r++) {
+      for (var c = 0; c < d.cols; c++) {
+        var i = R.idx(r, c, d.cols);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cell';
+        btn.dataset.i = String(i);
+        // DOM 顺序保持 = 棋盘索引（便于 boardEl.children[i] 取格），
+        // 用 grid 坐标把第 0 行画在最下面，让红方在下（符合习惯）。
+        btn.style.gridRow = String(d.rows - r);
+        btn.style.gridColumn = String(c + 1);
+        var water = R.isRiver(r, c, variant);
+        var den = R.denOwner(r, c, variant);
+        var trapOwner = R.trapOwnerIdx(i, variant);
+        if (water) btn.classList.add('water');
+        else if ((r + c) % 2 === 0) btn.classList.add('land-dark');
+        if (trapOwner) {
+          btn.classList.add('trap');
+          btn.classList.add(trapOwner === 'red' ? 'red-trap' : 'blue-trap');
+        }
+        if (den) {
+          btn.classList.add('den');
+          btn.classList.add(den === 'red' ? 'red-den' : 'blue-den');
+        }
+        // 标记
+        var coord = document.createElement('span');
+        coord.className = 'coord';
+        coord.textContent = R.posName(i, d.cols);
+        btn.appendChild(coord);
+        if (den) {
+          var m = document.createElement('span');
+          m.className = 'mark den-mark';
+          m.textContent = '穴';
+          btn.appendChild(m);
+        } else if (trapOwner) {
+          var t = document.createElement('span');
+          t.className = 'mark';
+          t.style.right = '3px'; t.style.bottom = '2px';
+          t.textContent = '陷';
+          btn.appendChild(t);
+        }
+        btn.addEventListener('click', onCellClick);
+        frag.appendChild(btn);
+      }
+    }
+    boardEl.appendChild(frag);
+  }
+
+  function cellEl(i) { return boardEl.children[i]; }
+
+  function render() {
+    var st = game.state;
+    if (!st) return;
+    var N = st.size;
+    var variant = R.variantOf(st);
+
+    // 清掉与棋子/状态相关的 class，保留地形 class
+    for (var i = 0; i < N; i++) {
+      var el = cellEl(i);
+      if (!el) continue;
+      el.classList.remove('movable', 'target', 'capture', 'selected', 'lastmove', 'selectable', 'clickable-flip');
+      // 移除旧棋子
+      var old = el.querySelector('.piece');
+      if (old) old.remove();
+    }
+
+    // 放置棋子
+    for (var j = 0; j < N; j++) {
+      var p = st.board[j];
+      if (!p) continue;
+      var el2 = cellEl(j);
+      var piece = document.createElement('div');
+      piece.className = 'piece';
+      if (p.hidden) {
+        piece.classList.add('hidden-piece');
+        piece.innerHTML = '<span class="glyph">?</span>';
+        // 人类看自己的暗子也仍是暗子（规则如此），但给个提示色点
+      } else {
+        piece.classList.add(p.color);
+        var glyph = document.createElement('span');
+        glyph.className = 'glyph';
+        glyph.textContent = R.CHARS[p.type];
+        piece.appendChild(glyph);
+        // 战力角标
+        var rk = document.createElement('span');
+        rk.className = 'rank';
+        rk.textContent = String(R.RANK[p.type]);
+        piece.appendChild(rk);
+        var tOwn = R.trapOwnerIdx(j, variant);
+        if (tOwn && tOwn !== p.color) piece.classList.add('trapped');
+        if (R.isRiverIdx(j, st.cols, variant)) piece.classList.add('in-water');
+      }
+      el2.appendChild(piece);
+    }
+
+    // 高亮可操作项
+    if (!game.over && isHumanTurn()) {
+      if (needsFlipOnly()) {
+        // 首翻：只能翻
+        R.hiddenTiles(st).forEach(function (k) { cellEl(k).classList.add('clickable-flip'); });
+      } else {
+        // 翻棋后续回合：既可翻任意暗子，也可移动己方明子
+        if (canFlipNow()) {
+          R.hiddenTiles(st).forEach(function (k) { cellEl(k).classList.add('clickable-flip'); });
+        }
+        var color = st.colorOf[st.turn];
+        for (var m = 0; m < N; m++) {
+          var q = st.board[m];
+          if (q && !q.hidden && q.color === color) cellEl(m).classList.add('selectable');
+        }
+      }
+    }
+
+    // 选中与落点
+    if (game.selected !== null) {
+      cellEl(game.selected).classList.add('selected');
+      game.targets.forEach(function (t) {
+        var el3 = cellEl(t);
+        var occupant = st.board[t];
+        el3.classList.add('target');
+        if (occupant && !occupant.hidden) el3.classList.add('capture');
+      });
+    }
+    // 上一步
+    if (game.lastMove) {
+      if (game.lastMove.from !== undefined) cellEl(game.lastMove.from).classList.add('lastmove');
+      if (game.lastMove.to !== undefined) cellEl(game.lastMove.to).classList.add('lastmove');
+      if (game.lastMove.at !== undefined) cellEl(game.lastMove.at).classList.add('lastmove');
+    }
+
+    renderPanels();
+  }
+
+  function renderPanels() {
+    var st = game.state;
+    if (!st) return;
+
+    // 回合指示
+    var p1 = $('#pillP1'), p2 = $('#pillP2');
+    var c1 = st.colorOf.p1, c2 = st.colorOf.p2;
+    // 翻棋首翻前颜色未定：p1 默认按红、p2 默认按蓝显示，定色后跟随真实颜色
+    p1.className = 'turnpill ' + (c1 || 'red');
+    p2.className = 'turnpill ' + (c2 || 'blue');
+    $('#whoP1').textContent = labelForSeat('p1');
+    $('#whoP2').textContent = labelForSeat('p2');
+    var pending = st.flipMode ? '待定' : '—';
+    $('#roleP1').textContent = c1 ? R.colorName(c1) : pending;
+    $('#roleP2').textContent = c2 ? R.colorName(c2) : pending;
+    if (st.phase === 'play') {
+      (st.turn === 'p1' ? p1 : p2).classList.add('active');
+    }
+
+    // 状态文字
+    var line = $('#statusline');
+    var meta = $('#metaTurn');
+    if (meta) {
+      if (st.phase === 'over') meta.textContent = '对局结束';
+      else {
+        var seat = st.turn === 'p1' ? $('#whoP1').textContent : $('#whoP2').textContent;
+        var col2 = st.colorOf[st.turn];
+        var boardName = (st.cols === 4) ? '四乘四' : '七乘九';
+        meta.textContent = boardName + ' · ' + seat + (col2 ? '（' + R.colorName(col2) + '）' : '（待定色）');
+      }
+    }
+    if (st.phase === 'over') {
+      var txt;
+      if (st.winner === null) txt = '和棋 — ' + st.winReason;
+      else {
+        txt = R.colorName(st.winner) + '获胜！<span class="hl">' + st.winReason + '</span>';
+      }
+      line.innerHTML = txt;
+    } else {
+      var who = st.turn === 'p1' ? $('#whoP1').textContent : $('#whoP2').textContent;
+      var col = st.colorOf[st.turn];
+      var hint = '';
+      if (needsFlipOnly()) hint = ' — 请点击任意暗子翻开（首翻定色）';
+      else {
+        hint = col ? ' — 走 ' + R.colorName(col) : '';
+        if (canFlipNow()) hint += '，或点击暗子翻开';
+      }
+      var wait = (config.opponent === 'ai' && st.turn === aiPlayer());
+      line.innerHTML = '<span class="hl">' + who + '</span> 行动' + hint + (wait ? ' <span class="warn">(AI 思考中…)</span>' : '');
+    }
+
+    // 吃子记录：从初始 16 子减去场上存量
+    renderEaten(st);
+
+    // 日志
+    renderLog(st);
+
+    // AI 信息
+    $('#aiinfo').textContent = game.stats.ms
+      ? ('搜索深度 ' + game.stats.depth + ' · 节点 ' + game.stats.nodes + ' · ' + game.stats.ms + 'ms')
+      : '等待中';
+
+    // 按钮可用性
+    $('#btnUndo').disabled = !canUndo();
+    $('#btnNew').disabled = false;
+  }
+
+  function labelForSeat(seat) {
+    var st = game.state;
+    var col = st ? st.colorOf[seat] : null;
+    if (config.opponent === 'human') {
+      // 双人同屏：翻棋首翻前还不知道各自执什么颜色，用"先手/后手"表示
+      if (col) return R.colorName(col);
+      return seat === 'p1' ? '先手' : '后手';
+    }
+    // 人机：始终以"你 / AI"称呼，颜色单独在下面显示
+    return seat === humanPlayer() ? '你' : 'AI';
+  }
+
+  function renderEaten(st) {
+    ['red', 'blue'].forEach(function (color) {
+      var row = $('#eaten-' + color);
+      row.innerHTML = '';
+      // 存活数必须包含尚未翻开的暗子，否则翻棋开局会显示"被吃 16 子"。
+      // 每种颜色共 8 枚（两种棋盘都一样：16 枚棋子红蓝各 8）。
+      var lost = 8 - R.countColorTotal(st, color);
+      if (lost <= 0) {
+        row.innerHTML = '<span class="chip none">无</span>';
+        return;
+      }
+      var known = (game.eatenKnown && game.eatenKnown[color]) || [];
+      // 已知身份的按顺序展示
+      for (var i = 0; i < known.length; i++) {
+        var chip = document.createElement('span');
+        chip.className = 'chip ' + color;
+        chip.textContent = R.CHARS[known[i]];
+        chip.title = R.colorName(color) + R.CHARS[known[i]] + '（被吃）';
+        row.appendChild(chip);
+      }
+      // 剩余数量用暗子占位（翻棋里被吃的可能是从未翻开的子）
+      for (var k = known.length; k < lost; k++) {
+        var chip2 = document.createElement('span');
+        chip2.className = 'chip ' + color;
+        chip2.textContent = '?';
+        chip2.title = '被吃掉的暗子（身份未知）';
+        row.appendChild(chip2);
+      }
+    });
+  }
+
+  function renderLog(st) {
+    var box = $('#log');
+    if (!st.log) { box.innerHTML = '<div class="entry">— 本局未记录 —</div>'; return; }
+    if (!st.log.length) { box.innerHTML = '<div class="entry">开局，红先。</div>'; return; }
+    var html = [];
+    for (var i = 0; i < st.log.length; i++) {
+      var e = st.log[i];
+      var n = i + 1;
+      if (e.action.kind === 'flip') {
+        var tile = e.tile || {};
+        html.push('<div class="entry">' + n + '. <b class="' + cls(e.color) + '">' + R.colorName(e.color) +
+          '</b> 翻开 ' + R.posName(e.action.at) + ' → <span class="' + cls(e.color) + '">' +
+          R.CHARS[tile.type] + '</span></div>');
+      } else {
+        var mv = e.piece;
+        var s = n + '. <b class="' + cls(mv.color) + '">' + R.colorName(mv.color) + '</b> ' +
+          R.CHARS[mv.type] + ' ' + R.posName(e.action.from) + '→' + R.posName(e.action.to);
+        if (e.captured) s += ' <span class="eat">吃 ' + R.colorName(e.captured.color) + R.CHARS[e.captured.type] + '</span>';
+        html.push('<div class="entry">' + s + '</div>');
+      }
+    }
+    box.innerHTML = html.reverse().join('');
+  }
+  function cls(color) { return color === 'red' ? 'r' : 'b'; }
+
+  // ------------------------------------------------------------ 交互
+  function onCellClick(ev) {
+    var i = parseInt(ev.currentTarget.dataset.i, 10);
+    handleCell(i);
+  }
+
+  function handleCell(i) {
+    var st = game.state;
+    if (!st || game.over || st.phase !== 'play') return;
+    if (game.aiThinking) return;
+    if (!isHumanTurn()) return;
+
+    // 首翻阶段：还没有颜色，只能翻
+    if (needsFlipOnly()) {
+      var cell = st.board[i];
+      if (cell && cell.hidden) doAction({ kind: 'flip', at: i });
+      else SOUND.bad();
+      return;
+    }
+
+    // 翻棋后续回合：点暗子即可翻开
+    if (canFlipNow() && st.board[i] && st.board[i].hidden) {
+      doAction({ kind: 'flip', at: i });
+      return;
+    }
+
+    var color = st.colorOf[st.turn];
+    var p = st.board[i];
+
+    // 点落点
+    if (game.selected !== null && game.targets.indexOf(i) >= 0) {
+      doAction({ kind: 'move', from: game.selected, to: i });
+      return;
+    }
+
+    // 点自己的棋子：选中
+    if (p && !p.hidden && p.color === color) {
+      selectPiece(i);
+      return;
+    }
+    // 点空白/他人子：取消选择
+    if (game.selected !== null) { game.selected = null; game.targets = []; render(); }
+  }
+
+  function selectPiece(i) {
+    var st = game.state;
+    game.selected = i;
+    game.targets = R.pieceMoves(st, i);
+    SOUND.select();
+    render();
+  }
+
+  // ------------------------------------------------------------ 执行动作
+  function doAction(action) {
+    var st = game.state;
+    var before = st;
+    var isFlip = action.kind === 'flip';
+    var captured = action.kind === 'move' ? before.board[action.to] : null;
+
+    var next = R.applyAction(st, action);
+    if (next === before || (next.ply === before.ply && next.phase === before.phase &&
+        JSON.stringify(next.board) === JSON.stringify(before.board))) {
+      SOUND.bad();
+      return;
+    }
+
+    // 记录被吃的具体棋子（经典模式全知；翻棋里被吃的子必然已翻开）
+    if (captured && !captured.hidden) {
+      game.eatenKnown = game.eatenKnown || { red: [], blue: [] };
+      game.eatenKnown[captured.color].push(captured.type);
+    }
+
+    game.state = next;
+    game.selected = null;
+    game.targets = [];
+    if (action.kind === 'move') game.lastMove = { from: action.from, to: action.to };
+    else game.lastMove = { at: action.at };
+
+    if (isFlip) SOUND.flip();
+    else if (captured && !captured.hidden) SOUND.capture();
+    else SOUND.move();
+
+    render();
+    afterAction();
+  }
+
+  function afterAction() {
+    var st = game.state;
+    if (st.phase === 'over') {
+      game.over = true;
+      var humanWon = true;
+      if (config.opponent === 'ai') {
+        var myColor = st.colorOf[humanPlayer()];
+        humanWon = (st.winner !== null && st.winner === myColor);
+      }
+      if (st.winner === null) { /* 和棋，不播胜负音 */ }
+      else if (humanWon) SOUND.win(); else SOUND.lose();
+      scheduleEndModal(st);
+      return;
+    }
+    if (config.opponent === 'ai' && st.turn === aiPlayer()) scheduleAI();
+    else markHistoryPoint();     // 轮到人类，记一个可悔棋点
+  }
+
+  function scheduleAI() {
+    if (game.aiThinking || game.over) return;
+    game.aiThinking = true;
+    renderPanels();
+    clearTimeout(game.aiTimer);
+    // 让 UI 先画出"思考中"，再开始算
+    game.aiTimer = setTimeout(function () {
+      var st = game.state;
+      if (!st || st.phase !== 'play' || st.turn !== aiPlayer()) { game.aiThinking = false; renderPanels(); return; }
+      var res;
+      try {
+        res = AI.chooseAction(st, { difficulty: config.difficulty });
+      } catch (e) {
+        console.error('AI 出错', e);
+        res = null;
+      }
+      game.aiThinking = false;
+      if (!res || !res.action) { renderPanels(); return; }
+      game.stats = { nodes: res.nodes, ms: res.ms, depth: res.depth };
+      doAction(res.action);
+    }, 220);
+  }
+
+  function scheduleEndModal(st) {
+    setTimeout(function () { showResultModal(st); }, 420);
+  }
+
+  // ------------------------------------------------------------ 悔棋
+  var history = [];   // 每次「人类可操作」时压入快照
+
+  function snapshot() {
+    return {
+      state: R.cloneState(game.state),
+      eatenKnown: game.eatenKnown ? JSON.parse(JSON.stringify(game.eatenKnown)) : null,
+      lastMove: game.lastMove ? JSON.parse(JSON.stringify(game.lastMove)) : null,
+      stats: { nodes: game.stats.nodes, ms: game.stats.ms, depth: game.stats.depth }
+    };
+  }
+  function pushHistory() {
+    history.push(snapshot());
+    if (history.length > 200) history.shift();
+  }
+  function canUndo() {
+    if (!game.state) return false;
+    // 对局一开始就没有可悔的
+    return history.length > 0 && game.state.ply > 0;
+  }
+  function undo() {
+    if (!canUndo()) { toast('没有可悔的棋'); return; }
+    clearTimeout(game.aiTimer);
+    game.aiThinking = false;
+    var snap = history.pop();
+    game.state = snap.state;
+    game.eatenKnown = snap.eatenKnown;
+    game.lastMove = snap.lastMove;
+    if (snap.stats) game.stats = snap.stats;
+    game.selected = null; game.targets = [];
+    game.over = (game.state.phase === 'over');
+    hideModals();
+    render();
+    toast('已悔棋');
+  }
+
+  /** 当轮到人类且不在思考时，记录悔棋点 */
+  function markHistoryPoint() {
+    if (!game.state || game.state.phase !== 'play') return;
+    if (config.opponent === 'ai' && game.state.turn !== humanPlayer()) return;
+    pushHistory();
+  }
+
+  // ------------------------------------------------------------ 新局
+  function newGame(opts) {
+    opts = opts || {};
+    if (opts.mode) config.mode = opts.mode;
+    if (opts.opponent) config.opponent = opts.opponent;
+    if (opts.difficulty) config.difficulty = opts.difficulty;
+
+    history = [];
+    game.eatenKnown = { red: [], blue: [] };
+    game.selected = null; game.targets = [];
+    game.lastMove = null; game.over = false; game.aiThinking = false;
+    clearTimeout(game.aiTimer);
+    game.stats = { nodes: 0, ms: 0, depth: 0 };
+
+    var seed = (Math.random() * 0xffffffff) >>> 0;
+    game.state = R.createState(config.mode, { seed: seed, first: config.first, record: true });
+    game.seed = seed;
+
+    // 棋盘形状变了：必须重建格子（4×4 与 7×9 的格数与几何不同）
+    buildBoard();
+
+    hideModals();
+    syncControls();
+    render();
+
+    // AI 执先手时先动；否则记下第一个可悔棋点
+    if (config.opponent === 'ai' && game.state.turn === aiPlayer()) scheduleAI();
+    else {
+      markHistoryPoint();
+      if (config.opponent === 'ai') {
+        var myCol = game.state.colorOf[humanPlayer()];
+        if (game.state.flipMode && !myCol) toast('你是先手：点击任意暗子翻开，先翻定色');
+        else if (myCol) toast('你执' + R.colorName(myCol) + (game.state.turn === humanPlayer() ? '，请先走' : ''));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------ 弹窗
+  function showModal(id) { $(id).classList.remove('hidden'); }
+  function hideModals() { $$('.overlay').forEach(function (o) { o.classList.add('hidden'); }); }
+
+  function showResultModal(st) {
+    var title, bodyHtml;
+    if (st.winner === null) {
+      title = '🤝 和棋';
+      bodyHtml = '<div class="winline">' + st.winReason + '。</div>';
+    } else {
+      var iWon;
+      if (config.opponent === 'ai') iWon = (st.winner === st.colorOf[humanPlayer()]);
+      else iWon = true;
+      title = config.opponent === 'ai' ? (iWon ? '🎉 你赢了！' : '😵 你输了') : (R.colorName(st.winner) + '获胜');
+      bodyHtml = '<div class="winline"><span class="hl">' + R.colorName(st.winner) + '</span> ' + st.winReason +
+        '。<br>共 ' + Math.ceil(st.ply / 2) + ' 回合。</div>';
+    }
+    $('#resultTitle').textContent = title;
+    $('#resultBody').innerHTML = bodyHtml;
+
+    // 同步难度按钮
+    $$('#resultDiff button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.d === config.difficulty);
+    });
+    showModal('#modalResult');
+  }
+
+  function showRules() { showModal('#modalRules'); }
+
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.classList.remove('show'); }, 1900);
+  }
+
+  // ------------------------------------------------------------ 控件同步
+  var MODE_LABEL = { classic: '经典模式', flip: '翻棋模式', mini: '四乘四翻棋' };
+  function syncControls() {
+    $$('#segMode button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === config.mode); });
+    $$('#segOpp button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === config.opponent); });
+    $$('#segDiff button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === config.difficulty); });
+    $$('#segFirst button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === config.first); });
+    $('#modebadge').textContent = MODE_LABEL[config.mode] || '斗兽棋';
+    $('#modebadge').className = 'modebadge ' + config.mode;
+    $('#diffField').style.display = config.opponent === 'ai' ? '' : 'none';
+    // 规则弹窗：按当前模式切换标题与正文（data-rule-for 为空格分隔的模式列表）
+    $('#rulesTitle').textContent = (MODE_LABEL[config.mode] || '斗兽棋') + ' 规则';
+    $$('[data-rule-for]').forEach(function (el) {
+      var modes = String(el.dataset.ruleFor).split(/\s+/);
+      var show = modes.indexOf('all') >= 0 || modes.indexOf(config.mode) >= 0;
+      el.style.display = show ? '' : 'none';
+    });
+    // 棋力阶梯的注释在四乘四下要换一套（没有河流/跳河）
+    var ladderVariant = (config.mode === 'mini') ? 'mini' : 'full';
+    $$('[data-note]').forEach(function (el) {
+      el.style.display = (el.dataset.note === ladderVariant) ? '' : 'none';
+    });
+  }
+
+  // ------------------------------------------------------------ 彩蛋：王文衡爱玩
+  /**
+   * 触发方式（三种，任一种都能解锁）：
+   *   1) 键盘依次输入「王文衡爱玩」的拼音首字母  w w h a w
+   *   2) 键盘连续输入中文关键词「王文衡」（需中文输入法，取输入框的 composition 结果）
+   *   3) 连续点击标题「斗兽棋」5 次
+   * 彩蛋纯属玩笑，不影响任何对局逻辑。
+   */
+  var EGG = {
+    key: 'wwhaw',              // 「王文衡爱玩」的拼音首字母
+    cnWords: ['王文衡爱玩', '王文衡'],
+    unlocked: false,
+    buffer: '',
+    clicks: 0,
+    clickTimer: null
+  };
+
+  function unlockEgg(how) {
+    var modal = $('#modalEgg');
+    if (!modal) return;
+    EGG.unlocked = true;
+    try { localStorage.setItem('dsq_egg_wangwenheng', '1'); } catch (e) {}
+
+    // 撒花
+    var conf = $('#eggConfetti');
+    if (conf) {
+      conf.innerHTML = '';
+      var colors = ['#e8544a', '#3d8ee0', '#f0c419', '#43c07a', '#ff8bda', '#8fd0ff'];
+      for (var i = 0; i < 46; i++) {
+        var bit = document.createElement('i');
+        bit.className = 'confetti-bit';
+        bit.style.left = (Math.random() * 100) + '%';
+        bit.style.background = colors[(Math.random() * colors.length) | 0];
+        bit.style.animationDelay = (Math.random() * 0.9).toFixed(2) + 's';
+        bit.style.animationDuration = (1.6 + Math.random() * 1.4).toFixed(2) + 's';
+        bit.style.transform = 'rotate(' + ((Math.random() * 360) | 0) + 'deg)';
+        conf.appendChild(bit);
+      }
+    }
+    // 棋子小图标
+    var row = $('#eggPieces');
+    if (row) {
+      row.innerHTML = '';
+      ['象', '狮', '虎', '豹', '狼', '狗', '猫', '鼠'].forEach(function (ch, k) {
+        var d = document.createElement('span');
+        d.className = 'egg-chip ' + (k % 2 === 0 ? 'red' : 'blue');
+        d.textContent = ch;
+        d.style.animationDelay = (k * 0.07).toFixed(2) + 's';
+        row.appendChild(d);
+      });
+    }
+    var line = $('#eggLine');
+    if (line) {
+      line.textContent = (how === 'click')
+        ? '你连标题都不放过，看来是真的爱玩。'
+        : '你已经发现了这个秘密。';
+    }
+    SOUND.win();
+    showModal('#modalEgg');
+    // 彩蛋弹窗关掉后恢复正常界面
+    setTimeout(function () { modal.classList.add('egg-shown'); }, 10);
+  }
+
+  function eggKey(ev) {
+    // 忽略在输入框里的按键
+    if (ev.target && /input|textarea|select/i.test(ev.target.tagName)) return;
+    var k = (ev.key || '').toLowerCase();
+    // 数字/字母输入：累积首字母序列
+    if (/^[a-z]$/.test(k)) {
+      EGG.buffer = (EGG.buffer + k).slice(-EGG.key.length);
+      if (EGG.buffer === EGG.key) { EGG.buffer = ''; unlockEgg('keys'); return; }
+    } else if (ev.key && ev.key.length === 1) {
+      // 中文输入：把汉字累积到另一个缓冲里判断
+      EGG.cnBuf = ((EGG.cnBuf || '') + ev.key).slice(-6);
+      for (var i = 0; i < EGG.cnWords.length; i++) {
+        if (EGG.cnBuf.indexOf(EGG.cnWords[i]) >= 0) { EGG.cnBuf = ''; unlockEgg('keys'); return; }
+      }
+    }
+  }
+
+  function eggTitleClick() {
+    EGG.clicks++;
+    clearTimeout(EGG.clickTimer);
+    if (EGG.clicks >= 5) { EGG.clicks = 0; unlockEgg('click'); return; }
+    EGG.clickTimer = setTimeout(function () { EGG.clicks = 0; }, 1400);
+  }
+
+  // ------------------------------------------------------------ 绑定
+  function bind() {
+    buildBoard();
+
+    $('#btnNew').addEventListener('click', function () {
+      if (game.state && !game.over && game.state.ply > 4) {
+        if (!confirm('当前对局尚未结束，确定要重开吗？')) return;
+      }
+      newGame();
+    });
+    $('#btnUndo').addEventListener('click', undo);
+    $('#btnRules').addEventListener('click', showRules);
+    $('#btnSound').addEventListener('click', function () {
+      config.soundOn = !config.soundOn;
+      this.textContent = config.soundOn ? '🔊 音效' : '🔇 静音';
+      toast(config.soundOn ? '音效已开启' : '音效已关闭');
+    });
+
+    // 关弹窗
+    $$('[data-close]').forEach(function (b) {
+      b.addEventListener('click', function () { $('#modal' + b.dataset.close).classList.add('hidden'); });
+    });
+
+    // 结果弹窗里的按钮
+    $('#btnAgain').addEventListener('click', function () { newGame(); });
+    $$('#resultDiff button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        config.difficulty = b.dataset.d;
+        $$('#resultDiff button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        syncControls();
+      });
+    });
+
+    // 左侧设置：模式 / 对手 / 难度 / 先手
+    $$('#segMode button').forEach(function (b) {
+      b.addEventListener('click', function () { config.mode = b.dataset.v; syncControls(); newGame({ mode: b.dataset.v }); });
+    });
+    $$('#segOpp button').forEach(function (b) {
+      b.addEventListener('click', function () { config.opponent = b.dataset.v; syncControls(); newGame({ opponent: b.dataset.v }); });
+    });
+    $$('#segDiff button').forEach(function (b) {
+      b.addEventListener('click', function () { config.difficulty = b.dataset.v; syncControls(); });
+    });
+    $$('#segFirst button').forEach(function (b) {
+      b.addEventListener('click', function () { config.first = b.dataset.v; syncControls(); newGame({ }); });
+    });
+
+    // 键盘：R 重开，U 悔棋，Esc 取消选择，? 打开规则；同时监听彩蛋序列
+    document.addEventListener('keydown', function (e) {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+      eggKey(e);
+      if (e.key === 'r' || e.key === 'R') { newGame(); }
+      else if (e.key === 'u' || e.key === 'U') { undo(); }
+      else if (e.key === 'Escape') { game.selected = null; game.targets = []; render(); }
+      else if (e.key === '?') { showRules(); }
+    });
+
+    // 彩蛋触发：连续点击标题 5 次
+    var brand = document.querySelector('.brand h1');
+    if (brand) {
+      brand.style.cursor = 'pointer';
+      brand.addEventListener('click', eggTitleClick);
+    }
+
+    // 关掉彩蛋弹窗后清理动画
+    var eggModal = $('#modalEgg');
+    if (eggModal) {
+      eggModal.addEventListener('click', function (e) {
+        if (e.target === eggModal) { eggModal.classList.add('hidden'); eggModal.classList.remove('egg-shown'); }
+      });
+      $$('[data-close="Egg"]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          eggModal.classList.add('hidden');
+          eggModal.classList.remove('egg-shown');
+        });
+      });
+    }
+  }
+
+  // ------------------------------------------------------------ 启动
+  bind();
+  newGame();
+})();
+
+</script>
+</body>
+</html>
