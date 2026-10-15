@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小游戏合集</title>
+<meta name="description" content="几个可以随时打开玩的小游戏，全部离线可用。">
+<style>
+:root{
+  --bg:#0b1020;
+  --panel-line:rgba(255,255,255,.12);
+  --text:#e8ecff;
+  --muted:#8f9ac0;
+  --accent:#6ea8ff;
+  --accent2:#a06bff;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 640px at 12% -12%, #1c2a55 0%, transparent 60%),
+    radial-gradient(900px 560px at 112% 6%, #3a1f5c 0%, transparent 55%),
+    linear-gradient(180deg,var(--bg),#131a33);
+  color:var(--text);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;min-height:100dvh;
+}
+#app{max-width:1100px;margin:0 auto;padding:38px 20px calc(38px + env(safe-area-inset-bottom))}
+
+/* ---------- 头部 ---------- */
+header{text-align:center;margin-bottom:34px}
+.logo{display:inline-flex;align-items:center;gap:11px;font-size:26px;font-weight:800;letter-spacing:.5px}
+.logo .mark{
+  width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-size:22px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 8px 24px rgba(110,168,255,.4)
+}
+.sub{color:var(--muted);font-size:14px;margin-top:12px;line-height:1.7}
+
+/* ---------- 卡片 ---------- */
+#grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.card{
+  position:relative;display:flex;flex-direction:column;gap:12px;
+  padding:20px;border-radius:18px;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));
+  border:1px solid var(--panel-line);
+  text-decoration:none;color:inherit;overflow:hidden;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease
+}
+.card::after{
+  content:"";position:absolute;inset:-40% 40% 55% -25%;
+  background:radial-gradient(circle,var(--glow) 0%,transparent 70%);
+  opacity:0;transition:opacity .25s ease;pointer-events:none
+}
+.card:hover,.card:focus-visible{
+  transform:translateY(-4px);border-color:var(--glow);
+  box-shadow:0 14px 34px rgba(0,0,0,.4);outline:none
+}
+.card:hover::after,.card:focus-visible::after{opacity:.3}
+.card:active{transform:translateY(-1px) scale(.995)}
+.card .top{display:flex;align-items:center;gap:13px}
+.icon{
+  width:50px;height:50px;border-radius:14px;flex:0 0 auto;
+  display:grid;place-items:center;font-size:25px;
+  background:var(--iconbg);border:1px solid var(--panel-line)
+}
+.card h2{margin:0;font-size:17px;font-weight:700;line-height:1.35}
+.card p{margin:0;font-size:13px;color:var(--muted);line-height:1.65;flex:1}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{
+  font-size:11px;padding:3px 9px;border-radius:999px;
+  background:rgba(255,255,255,.08);color:#b9c4e6;border:1px solid rgba(255,255,255,.08)
+}
+.badge{
+  position:absolute;top:14px;right:14px;font-size:10px;font-weight:800;letter-spacing:.6px;
+  padding:3px 8px;border-radius:999px;color:#fff
+}
+.badge.new{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 3px 10px rgba(110,168,255,.45)}
+.badge.hot{background:linear-gradient(135deg,#ff6b6b,#ffa94d);box-shadow:0 3px 10px rgba(255,107,107,.45)}
+.card.soon{opacity:.5;cursor:not-allowed;border-style:dashed}
+.card.soon:hover{transform:none;box-shadow:none;border-color:var(--panel-line)}
+.card.soon::after{display:none}
+.card.soon .icon{filter:grayscale(1)}
+
+/* ---------- 页脚 ---------- */
+footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12.5px;line-height:2}
+footer b{color:var(--text)}
+footer .dot{opacity:.45;margin:0 8px}
+
+@media (max-width:560px){
+  #app{padding:24px 14px calc(24px + env(safe-area-inset-bottom))}
+  .logo{font-size:21px}
+  .logo .mark{width:36px;height:36px;font-size:19px;border-radius:11px}
+  .sub{font-size:13px}
+  #grid{grid-template-columns:1fr;gap:13px}
+  .card{padding:16px;border-radius:15px}
+  .icon{width:44px;height:44px;font-size:22px;border-radius:12px}
+  .card h2{font-size:16px}
+}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo"><span class="mark">🎮</span><span>小游戏合集</span></div>
+    <p class="sub">
+      点开卡片即可开玩 · 全部离线可用，无需安装<br>
+      手机、平板、电脑都支持
+    </p>
+  </header>
+  <main id="grid"></main>
+  <footer id="foot"></footer>
+</div>
+
+<!-- ★ 游戏清单：要加游戏改这个文件 -->
+<script src="games.js"></script>
+
+<script>
+"use strict";
+/* ---------- 渲染 ---------- */
+function renderGames() {
+  const list = (typeof GAMES === 'undefined' || !Array.isArray(GAMES)) ? [] : GAMES;
+  const real = list.filter(g => g && !g.soon);
+  const soon = list.filter(g => g && g.soon);
+  const grid = document.getElementById('grid');
+
+  const cardHtml = real.map(g => {
+    const color = g.color || '#6ea8ff';
+    const href = buildHref(g.file);
+    const badge = g.isNew ? '<span class="badge new">NEW</span>'
+                : (g.hot ? '<span class="badge hot">HOT</span>' : '');
+    return '' +
+      '<a class="card" href="' + esc(href) + '" ' +
+         'style="--glow:' + esc(color) + ';--iconbg:' + hexA(color, .16) + '">' +
+        badge +
+        '<div class="top"><span class="icon">' + g.icon + '</span><h2>' + esc(g.title) + '</h2></div>' +
+        '<p>' + esc(g.desc) + '</p>' +
+        (g.tags && g.tags.length
+          ? '<div class="tags">' + g.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>'
+          : '') +
+      '</a>';
+  }).join('');
+
+  const soonHtml = soon.map(g =>
+    '<div class="card soon" aria-disabled="true">' +
+      '<div class="top"><span class="icon">' + g.icon + '</span><h2>' + esc(g.title) + '</h2></div>' +
+      '<p>' + esc(g.desc) + '</p>' +
+    '</div>'
+  ).join('');
+
+  grid.innerHTML = cardHtml + soonHtml;
+  document.getElementById('foot').innerHTML =
+    '共 <b>' + real.length + '</b> 个游戏' +
+    (soon.length ? '<span class="dot">·</span>' + soon.length + ' 个开发中' : '') +
+    '<br>纯静态页面 · 无需联网即可游玩';
+}
+
+/* 由 file 字段生成链接：
+   - 'gobang'        → 'gobang/'        （文件夹方式，里面是 index.html）
+   - 'gobang.html'   → 'gobang.html'    （单文件方式）
+   - 'sub/x.html'    → 'sub/x.html'     （已含路径，原样使用）
+   这样 GAMES 里只需写最简短的名字，网址却能保持整洁。 */
+function buildHref(file) {
+  const f = String(file || '').trim().replace(/^\.?\//, '');
+  if (!f) return '#';
+  if (f.indexOf('/') >= 0) return f;              // 已含路径
+  if (/\.html?$/i.test(f)) return f;               // 单文件
+  return f + '/';                                  // 文件夹 → 目录形式
+}
+
+function hexA(hex, a) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+  if (!m) return 'rgba(110,168,255,.16)';
+  return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+renderGames();
+</script>
+</body>
+</html>
