@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover">
+<title>海战棋 · Battleship</title>
+<style>
+/* ===================== 主题 ===================== */
+:root{
+  --panel:rgba(255,255,255,.055);
+  --panel-line:rgba(255,255,255,.12);
+  --text:#e8ecff;
+  --muted:#8f9ac0;
+  --accent:#6ea8ff;
+  --accent2:#a06bff;
+  --ok:#3ddc97;
+  --bad:#ff5d6c;
+  --warn:#ffc44d;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 640px at 12% -12%, #1c2a55 0%, transparent 60%),
+    radial-gradient(900px 560px at 37% 6%, #3a1f5c 0%, transparent 55%),
+    linear-gradient(180deg,#0b1020,#131a33);
+  background-attachment:fixed;
+  color:var(--text);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  min-height:100%;
+}
+button{font-family:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:14px 14px 26px;
+      padding-bottom:calc(26px + env(safe-area-inset-bottom))}
+
+/* ===================== 顶栏 ===================== */
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.logo{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:800;letter-spacing:.4px}
+.logo .mark{
+  width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:17px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 6px 18px rgba(110,168,255,.35)
+}
+.logo small{display:block;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:0}
+.spacer{flex:1}
+
+.diffs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--panel-line);padding:4px;border-radius:12px}
+.diffs button{
+  border:0;background:transparent;padding:7px 13px;border-radius:9px;cursor:pointer;
+  font-size:13px;font-weight:600;color:var(--muted);transition:.18s;min-height:34px
+}
+.diffs button:hover{color:var(--text)}
+.diffs button.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 14px rgba(110,168,255,.3)}
+
+/* ===================== 按钮 ===================== */
+.btn{
+  border:1px solid var(--panel-line);background:var(--panel);color:var(--text);
+  padding:10px 16px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;
+  transition:.18s;min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:7px
+}
+.btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.22)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.38;cursor:not-allowed;transform:none}
+.btn.primary{
+  border:0;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+  box-shadow:0 6px 18px rgba(110,168,255,.32)
+}
+.btn.primary:disabled{box-shadow:none}
+.btn.ghost{background:transparent}
+
+/* ===================== 状态条 ===================== */
+.bar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--panel-line);border-radius:14px;
+  padding:10px 13px;margin-bottom:12px
+}
+.bar .item{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.bar .item b{color:var(--text);font-size:15px;font-variant-numeric:tabular-nums}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+  font-size:12.5px;font-weight:700;border:1px solid var(--panel-line);background:rgba(255,255,255,.04)
+}
+.pill.idle{color:var(--muted)}
+.pill.you{color:var(--accent);border-color:rgba(110,168,255,.5);background:rgba(110,168,255,.12)}
+.pill.ai{color:var(--warn);border-color:rgba(255,196,77,.5);background:rgba(255,196,77,.12)}
+.pill.over{color:var(--ok);border-color:rgba(61,220,151,.5);background:rgba(61,220,151,.12)}
+.lives{display:flex;gap:3px;align-items:center}
+.shipdot{width:13px;height:9px;border-radius:2.5px;background:var(--accent);opacity:.9;display:inline-block}
+.shipdot.dead{background:var(--bad);opacity:.45;position:relative}
+.shipdot.dead::after{content:"";position:absolute;inset:0;background:
+  linear-gradient(45deg,transparent 44%,#fff 44%,#fff 56%,transparent 56%)}
+
+/* ===================== 棋盘布局 ===================== */
+.boards{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.panel{
+  flex:1 1 420px;min-width:300px;
+  background:var(--panel);border:1px solid var(--panel-line);border-radius:16px;padding:12px
+}
+.panel h2{
+  margin:0 0 9px;font-size:14.5px;font-weight:800;display:flex;align-items:center;gap:9px;letter-spacing:.3px
+}
+.panel h2 .tag{
+  font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--panel-line);color:var(--muted)
+}
+.panel.mine h2 .badge{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.panel.foe h2 .badge{background:linear-gradient(135deg,#ff8a5b,var(--bad))}
+.panel h2 .badge{
+  width:9px;height:9px;border-radius:50%;flex:0 0 auto
+}
+.panel.foe.armed{border-color:rgba(110,168,255,.45);box-shadow:0 0 0 1px rgba(110,168,255,.2),0 8px 26px rgba(110,168,255,.09)}
+.panel.mine.armed{border-color:rgba(161,107,255,.45);box-shadow:0 0 0 1px rgba(161,107,255,.2)}
+
+/* ===================== 网格 ===================== */
+/* 单个 board：7 列 × 7 行（1 个表头轨道 + 6 个棋盘轨道） */
+.board{
+  display:grid;
+  grid-template-columns:17px repeat(6, minmax(40px, 1fr));
+  gap:6px;
+  touch-action:manipulation;
+  user-select:none;-webkit-user-select:none
+}
+.corner{grid-column:1;grid-row:1}
+.colhead,.rowhead{
+  display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted);
+  font-variant-numeric:tabular-nums
+}
+.cell{
+  position:relative;aspect-ratio:1/1;min-width:40px;min-height:40px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.13);
+  background:rgba(255,255,255,.045);
+  cursor:pointer;transition:background .14s,transform .1s,box-shadow .14s;
+  display:grid;place-items:center;
+  user-select:none;-webkit-user-select:none
+}
+.cell:hover{background:rgba(255,255,255,.11)}
+.cell:active{transform:scale(.97)}
+.cell.flat{cursor:default}
+.cell.flat:hover{background:rgba(255,255,255,.045)}
+
+/* 自己的船 */
+.cell.ship{
+  background:linear-gradient(180deg,rgba(110,168,255,.42),rgba(110,168,255,.24));
+  border-color:rgba(110,168,255,.55);box-shadow:inset 0 0 12px rgba(110,168,255,.14)
+}
+/* 预览 */
+.cell.preview-ok{
+  background:linear-gradient(180deg,rgba(61,220,151,.42),rgba(61,220,151,.2));
+  border-color:rgba(61,220,151,.75)
+}
+.cell.preview-bad{
+  background:linear-gradient(180deg,rgba(255,93,108,.48),rgba(255,93,108,.24));
+  border-color:rgba(255,93,108,.85)
+}
+/* 命中 / 未中 */
+.cell.hit{background:linear-gradient(180deg,rgba(255,93,108,.5),rgba(255,93,108,.28));border-color:rgba(255,93,108,.75)}
+.cell.hit::after{content:"✕";font-size:min(4.2vw,19px);font-weight:900;color:#fff;
+  text-shadow:0 0 9px rgba(255,93,108,.95)}
+.cell.miss{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);cursor:default}
+.cell.miss::after{content:"";width:8px;height:8px;border-radius:50%;background:rgba(143,154,192,.75)}
+.cell.sunk{
+  background:repeating-linear-gradient(45deg,rgba(0,0,0,.5) 0 5px,rgba(20,10,20,.5) 5px 10px),
+             linear-gradient(180deg,rgba(255,93,108,.28),rgba(0,0,0,.35));
+  border-color:rgba(255,93,108,.55)
+}
+.cell.sunk::after{content:"✕";font-size:min(4.2vw,19px);font-weight:900;color:rgba(255,255,255,.92)}
+.cell.sunk-ally{
+  background:repeating-linear-gradient(45deg,rgba(0,0,0,.45) 0 5px,rgba(30,12,24,.45) 5px 10px),
+             linear-gradient(180deg,rgba(255,93,108,.22),rgba(0,0,0,.3));
+  border-color:rgba(255,93,108,.45)
+}
+.cell.sunk-ally::after{content:"✕";font-size:min(4.2vw,19px);font-weight:900;color:rgba(255,255,255,.85)}
+
+.cell.ship.hit{background:linear-gradient(180deg,rgba(255,93,108,.55),rgba(255,93,108,.32))}
+
+/* 上次落点脉冲 */
+@keyframes pop{0%{box-shadow:0 0 0 0 rgba(255,255,255,.65)}100%{box-shadow:0 0 0 11px rgba(255,255,255,0)}}
+.cell.last{animation:pop .55s ease-out}
+
+.cell.disabled{cursor:not-allowed}
+
+/* ===================== 消息 ===================== */
+.logbox{
+  margin-top:13px;background:var(--panel);border:1px solid var(--panel-line);
+  border-radius:14px;padding:11px 13px
+}
+.logbox .hd{font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:7px;letter-spacing:.4px}
+#log{list-style:none;margin:0;padding:0;max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+#log li{
+  font-size:13.5px;line-height:1.45;padding:6px 10px;border-radius:9px;
+  background:rgba(255,255,255,.04);border-left:3px solid rgba(255,255,255,.16);
+  animation:fade .22s ease-out
+}
+@keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+#log li.you{border-left-color:var(--accent);background:rgba(110,168,255,.1)}
+#log li.ai{border-left-color:var(--warn);background:rgba(255,196,77,.09)}
+#log li.good{border-left-color:var(--ok);background:rgba(61,220,151,.11)}
+#log li.bad{border-left-color:var(--bad);background:rgba(255,93,108,.11)}
+
+/* ===================== 控制区 ===================== */
+.controls{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+.controls .grow{flex:1}
+.hint{font-size:12.5px;color:var(--muted);margin-top:9px;line-height:1.5}
+kbd{
+  background:rgba(255,255,255,.1);border:1px solid var(--panel-line);border-bottom-width:2px;
+  border-radius:5px;padding:1px 6px;font-size:11.5px;font-family:inherit;font-weight:700;color:var(--text)
+}
+.place-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.place-chip{
+  display:flex;align-items:center;gap:7px;font-size:12.5px;padding:6px 11px;border-radius:999px;
+  border:1px solid var(--panel-line);background:rgba(255,255,255,.04);color:var(--muted);font-weight:600
+}
+.place-chip.active{border-color:var(--accent);color:var(--accent);background:rgba(110,168,255,.12)}
+.place-chip.done{opacity:.5;text-decoration:line-through}
+.place-chip .mini{display:flex;gap:2px}
+.place-chip .mini i{width:9px;height:9px;border-radius:2px;background:currentColor;display:block}
+
+/* ===================== 结束浮层 ===================== */
+.overlay{
+  position:fixed;inset:0;background:rgba(4,7,18,.78);backdrop-filter:blur(6px);
+  display:none;place-items:center;padding:20px;z-index:50
+}
+.overlay.show{display:grid;animation:fade .25s ease-out}
+.card{
+  width:min(400px,100%);background:linear-gradient(180deg,rgba(30,40,78,.96),rgba(19,26,51,.98));
+  border:1px solid var(--panel-line);border-radius:20px;padding:24px;text-align:center;
+  box-shadow:0 24px 70px rgba(0,0,0,.6)
+}
+.card .big{font-size:52px;line-height:1;margin-bottom:8px}
+.card h3{margin:0 0 8px;font-size:23px;letter-spacing:.5px}
+.card h3.win{color:var(--ok)}
+.card h3.lose{color:var(--bad)}
+.card p{color:var(--muted);font-size:13.5px;margin:0 0 18px;line-height:1.6}
+.card .btn{width:100%;justify-content:center}
+.card .btn+.btn{margin-top:9px}
+
+@media (max-width:820px){
+  .boards{flex-direction:column}
+  .panel{flex:1 1 auto;width:100%}
+  .wrap{padding:11px 11px 22px}
+  .logo{font-size:17px}
+  .bar{padding:9px 11px;gap:8px}
+  .board{gap:5px;grid-template-columns:15px repeat(6, minmax(40px, 1fr))}
+  #log{max-height:120px}
+}
+@media (max-width:400px){
+  .cell{min-width:40px;min-height:40px}
+  .board{gap:4px;grid-template-columns:14px repeat(6, minmax(40px, 1fr))}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <span class="mark">🚢</span>
+      <span>海战棋
+        <small>6×6 · 单机对战电脑</small>
+      </span>
+    </div>
+    <div class="spacer"></div>
+    <div class="diffs" id="diffs">
+      <button data-diff="easy">简单</button>
+      <button data-diff="normal" class="active">普通</button>
+      <button data-diff="hard">困难</button>
+    </div>
+  </header>
+
+  <div class="bar">
+    <span class="pill idle" id="phasePill">布阵阶段</span>
+    <span class="item">你的舰船 <span class="lives" id="myLives"></span></span>
+    <span class="item">敌方舰船 <span class="lives" id="foeLives"></span></span>
+    <div class="spacer"></div>
+    <span class="item">剩余未放 <b id="leftToPlace">3</b></span>
+  </div>
+
+  <div class="boards">
+
+    <div class="panel mine armed" id="myPanel">
+      <h2><span class="badge"></span>你的海域 <span class="tag">友方</span></h2>
+      <div class="board" id="myGrid"><div class="corner"></div></div>
+      <div class="place-list" id="placeList"></div>
+      <div class="hint" id="myHint">点击格子放置舰船 · <kbd>R</kbd> 或右键切换方向</div>
+    </div>
+
+    <div class="panel foe" id="foePanel">
+      <h2><span class="badge"></span>敌方海域 <span class="tag">点击开火</span></h2>
+      <div class="board" id="foeGrid"><div class="corner"></div></div>
+      <div class="hint" id="foeHint">布阵完成后点击「开始战斗」，然后点击此棋盘开火。</div>
+    </div>
+
+  </div>
+
+  <div class="logbox">
+    <div class="hd">战斗日志</div>
+    <ul id="log"></ul>
+  </div>
+
+  <div class="controls" id="controls">
+    <button class="btn primary grow" id="btnStart">开始战斗</button>
+    <button class="btn" id="btnRotate">旋转 (R)</button>
+    <button class="btn" id="btnRandom">随机布阵</button>
+    <button class="btn ghost" id="btnReset">重新布阵</button>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <div class="big" id="ovIcon">🏆</div>
+    <h3 id="ovTitle">胜利</h3>
+    <p id="ovText"></p>
+    <button class="btn primary" id="ovAgain">再来一局</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   海战棋 — 纯逻辑层（可独立测试，不依赖 DOM）
+   ========================================================================= */
+(function(global){
+'use strict';
+
+var SIZE = 6;
+var LETTERS = ['A','B','C','D','E','F'];
+var SHIPS = [
+  { size:3, name:'巡洋舰' },
+  { size:2, name:'驱逐舰' },
+  { size:2, name:'护卫舰' }
+];
+
+function coordName(c, r){ return LETTERS[c] + (r+1); }
+function cloneBoard(b){ return b.map(function(row){ return row.slice(); }); }
+function emptyBoard(v){ var b=[]; for(var r=0;r<SIZE;r++){ var row=[]; for(var c=0;c<SIZE;c++) row.push(v===undefined?0:v); b.push(row); } return b; }
+function inBounds(c,r){ return c>=0 && c<SIZE && r>=0 && r<SIZE; }
+
+/* 计算某艘船的格子；返回 null 表示越界 */
+function shipCells(c, r, size, horiz){
+  var cells = [];
+  for(var i=0;i<size;i++){
+    var cc = c + (horiz ? i : 0);
+    var rr = r + (horiz ? 0 : i);
+    if(!inBounds(cc,rr)) return null;
+    cells.push([cc,rr]);
+  }
+  return cells;
+}
+
+/* 该位置是否能放（不重叠）；cells=null 视为非法 */
+function canPlace(occupied, c, r, size, horiz){
+  var cells = shipCells(c,r,size,horiz);
+  if(!cells) return false;
+  for(var i=0;i<cells.length;i++){
+    if(occupied[cells[i][1]][cells[i][0]]) return false;
+  }
+  return true;
+}
+
+/* 枚举某艘船所有合法放置（返回格子数组的数组） */
+function allPlacements(occupied, size){
+  var out = [];
+  for(var r=0;r<SIZE;r++){
+    for(var c=0;c<SIZE;c++){
+      for(var h=0;h<2;h++){
+        if(canPlace(occupied, c, r, size, h===0)) out.push(shipCells(c,r,size,h===0));
+      }
+    }
+  }
+  return out;
+}
+
+/* 舰队 = { ships:[{size,name,cells,hits:[]}], occupied:[[id..]] } */
+function makeFleet(){
+  return { ships:[], occupied:emptyBoard(0) };
+}
+function fleetPlace(fleet, shipIndex, cells){
+  var s = SHIPS[shipIndex];
+  var ship = { size:s.size, name:s.name, cells:cells.map(function(x){return x.slice();}), hits:[] };
+  fleet.ships.push(ship);
+  cells.forEach(function(x){ fleet.occupied[x[1]][x[0]] = fleet.ships.length; });
+  return ship;
+}
+function randomFleet(rng){
+  rng = rng || Math.random;
+  var fleet = makeFleet();
+  for(var i=0;i<SHIPS.length;i++){
+    var tried = 0, placed = false;
+    while(!placed){
+      var cells = shipCells(
+        Math.floor(rng()*SIZE), Math.floor(rng()*SIZE),
+        SHIPS[i].size, rng() < 0.5
+      );
+      if(cells && canPlace(fleet.occupied, cells[0][0], cells[0][1], SHIPS[i].size,
+            cells[1][1] === cells[0][1])){
+        fleetPlace(fleet, i, cells);
+        placed = true;
+      }
+      if(++tried > 5000) throw new Error('无法生成合法舰队');
+    }
+  }
+  return fleet;
+}
+function fleetAllSunk(fleet){
+  return fleet.ships.every(function(s){ return s.hits.length >= s.size; });
+}
+function shipAt(fleet, c, r){
+  var id = fleet.occupied[r][c];
+  if(!id) return null;
+  return fleet.ships[id-1];
+}
+/* 返回 'miss' | 'hit' | 'sunk' | 'repeat' */
+function fleetFire(fleet, c, r){
+  var ship = shipAt(fleet, c, r);
+  if(!ship) return 'miss';
+  var key = c + ',' + r;
+  if(ship.hits.indexOf(key) >= 0) return 'repeat';
+  ship.hits.push(key);
+  return ship.hits.length >= ship.size ? 'sunk' : 'hit';
+}
+
+/* ---------------------------------------------------------------------
+   AI —— 搜索/攻击两阶段
+   --------------------------------------------------------------------- */
+function createAI(difficulty, rng){
+  var rnd = rng || Math.random;
+  var diff = difficulty || 'normal';
+  var shots = emptyBoard(0);        // 0 未打, 1 miss, 2 hit
+  var queue = [];                   // 锁定模式的待选目标
+  var mode = 'hunt';               // hunt | target
+  var lastHits = [];                // 当前目标船的命中点
+
+  function isFree(c,r){ return inBounds(c,r) && shots[r][c] === 0; }
+
+  function addNeighbors(c,r){
+    var dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    for(var i=0;i<4;i++){
+      var cc=c+dirs[i][0], rr=r+dirs[i][1];
+      if(isFree(cc,rr) && queue.indexOf(cc+','+rr) < 0) queue.push(cc+','+rr);
+    }
+  }
+
+  /* 若能确定方向，只保留该方向候选 */
+  function pruneByDirection(){
+    if(lastHits.length < 2) return;
+    var cols = lastHits.map(function(h){ return h[0]; });
+    var rows = lastHits.map(function(h){ return h[1]; });
+    var sameRow = rows.every(function(v){ return v===rows[0]; });
+    var sameCol = cols.every(function(v){ return v===cols[0]; });
+    if(!sameRow && !sameCol) return;
+    queue = queue.filter(function(key){
+      var p = key.split(','), c=+p[0], r=+p[1];
+      return sameRow ? (r === rows[0]) : (c === cols[0]);
+    });
+  }
+
+  /* 概率密度：枚举每艘剩余舰船的全部可能放置，统计每个未知格被覆盖的次数 */
+  function densityPick(){
+    // blocked: miss 格 / 沉船邻域 / 已沉没船体
+    var blocked = emptyBoard(0);
+    for(var r=0;r<SIZE;r++) for(var c=0;c<SIZE;c++){
+      if(shots[r][c] === 1 || forbidden[r][c] || dead[r][c]) blocked[r][c] = 1;
+    }
+    // 已知命中但尚未击沉的格子：所有候选放置都必须覆盖它们
+    // 注意：已沉没船的命中格必须排除，否则永远无法满足约束，密度会退化成顺序扫描
+    var forced = [];
+    for(var r2=0;r2<SIZE;r2++) for(var c2=0;c2<SIZE;c2++){
+      if(shots[r2][c2] === 2 && !blocked[r2][c2]) forced.push([c2,r2]);
+    }
+    var remaining = remainingSizes();   // AI 视角下还没沉的尺寸列表
+    if(!remaining.length) return null;
+
+    var score = emptyBoard(0);
+    remaining.forEach(function(size){
+      for(var r3=0;r3<SIZE;r3++){
+        for(var c3=0;c3<SIZE;c3++){
+          for(var h=0;h<2;h++){
+            var cells = shipCells(c3,r3,size,h===0);
+            if(!cells) continue;
+            var ok = true;
+            for(var i=0;i<cells.length;i++){
+              if(blocked[cells[i][1]][cells[i][0]]){ ok = false; break; }
+            }
+            if(!ok) continue;
+            // 若已有命中未沉的格子，该放置必须覆盖全部命中格
+            for(var f=0;f<forced.length;f++){
+              var found = false;
+              for(var j=0;j<cells.length;j++){
+                if(cells[j][0]===forced[f][0] && cells[j][1]===forced[f][1]){ found = true; break; }
+              }
+              if(!found){ ok = false; break; }
+            }
+            if(!ok) continue;
+            for(var k=0;k<cells.length;k++){
+              var cc = cells[k][0], rr = cells[k][1];
+              if(shots[rr][cc] !== 0) continue;
+              // 有锁定目标时，能覆盖命中格的放放置权重更高
+              score[rr][cc] += forced.length ? 12 : 1;
+            }
+          }
+        }
+      }
+    });
+    // 首选：非 forbidden 格中得分最高者（同分随机，避免固定偏向左上角）
+    var pool = [], bestScore = -1;
+    for(var r4=0;r4<SIZE;r4++) for(var c4=0;c4<SIZE;c4++){
+      if(shots[r4][c4] !== 0 || forbidden[r4][c4]) continue;
+      var v = score[r4][c4];
+      if(v > bestScore){ bestScore = v; pool = [[c4,r4]]; }
+      else if(v === bestScore && v > 0){ pool.push([c4,r4]); }
+    }
+    if(bestScore > 0 && pool.length) return pool[Math.floor(rnd()*pool.length)];
+
+    // 放宽：本局舰船允许相邻，沉船周围不是绝对不可能，仅排除沉没船体本身
+    var pool2 = [], best2 = -1;
+    for(var r5=0;r5<SIZE;r5++) for(var c5=0;c5<SIZE;c5++){
+      if(shots[r5][c5] !== 0 || dead[r5][c5]) continue;
+      var v2 = score[r5][c5];
+      if(v2 > best2){ best2 = v2; pool2 = [[c5,r5]]; }
+      else if(v2 === best2) pool2.push([c5,r5]);
+    }
+    if(pool2.length) return pool2[Math.floor(rnd()*pool2.length)];
+    return null;
+  }
+
+  /* AI 视角下还没击沉的舰船尺寸 */
+  var sunkSizes = [];
+  function remainingSizes(){
+    var all = [3,2,2];
+    sunkSizes.forEach(function(s){
+      var i = all.indexOf(s);
+      if(i >= 0) all.splice(i,1);
+    });
+    return all;
+  }
+
+  function randomHunt(){
+    // 候选：未射击格，排除已沉没船体；沉船邻域优先排除但用尽后回退
+    var cands = [];
+    for(var r=0;r<SIZE;r++) for(var c=0;c<SIZE;c++){
+      if(shots[r][c] === 0 && !forbidden[r][c] && !dead[r][c]) cands.push([c,r]);
+    }
+    if(!cands.length){
+      for(var r2=0;r2<SIZE;r2++) for(var c2=0;c2<SIZE;c2++){
+        if(shots[r2][c2] === 0 && !dead[r2][c2]) cands.push([c2,r2]);
+      }
+    }
+    if(!cands.length){
+      for(var r3=0;r3<SIZE;r3++) for(var c3=0;c3<SIZE;c3++){
+        if(shots[r3][c3] === 0) cands.push([c3,r3]);
+      }
+    }
+    if(!cands.length) return null;
+    // 奇偶棋盘偏好：最短船为 2，隔行搜索不会漏船（仅普通/困难启用）
+    if(diff !== 'easy' && cands.length > 1){
+      var parity = cands.filter(function(p){ return (p[0]+p[1]) % 2 === 0; });
+      if(parity.length) cands = parity;
+    }
+    return cands[Math.floor(rnd()*cands.length)];
+  }
+
+  var forbidden = emptyBoard(0);   // 沉船周围（软排除，可回退）
+  var dead = emptyBoard(0);        // 已沉没船体（硬排除）
+
+  function markSunk(shipCellsArr){
+    shipCellsArr.forEach(function(cell){
+      dead[cell[1]][cell[0]] = 1;
+      for(var dr=-1;dr<=1;dr++) for(var dc=-1;dc<=1;dc++){
+        var cc=cell[0]+dc, rr=cell[1]+dr;
+        if(inBounds(cc,rr) && shots[rr][cc]===0) forbidden[rr][cc] = 1;
+      }
+    });
+  }
+
+  return {
+    /* 返回射击坐标 [c,r]，必定是未射击过的格子；若无可用格返回 null */
+    nextShot: function(){
+      var pick = null;
+
+      // 已确认击沉全部 3 艘 → 无目标可打（对局此时也必然已结束）
+      if(sunkSizes.length >= SHIPS.length) return null;
+
+      if(diff === 'hard'){
+        // 困难：先用概率密度（锁定时强制优先锁定队列以完成击沉）
+        if(mode === 'target'){
+          pruneByDirection();
+          while(queue.length){
+            var key = queue.shift();
+            var p = key.split(','), c=+p[0], r=+p[1];
+            if(isFree(c,r)){ pick = [c,r]; break; }
+          }
+        }
+        if(!pick){
+          pick = densityPick();
+          if(!pick) pick = randomHunt();
+        }
+      } else if(diff === 'normal'){
+        if(mode === 'target'){
+          pruneByDirection();
+          while(queue.length){
+            var k2 = queue.shift();
+            var p2 = k2.split(','), c2=+p2[0], r2=+p2[1];
+            if(isFree(c2,r2)){ pick=[c2,r2]; break; }
+          }
+        }
+        if(!pick) pick = randomHunt();
+      } else {
+        // 简单：会犯错。命中后有 45% 概率忘记跟踪，直接随机
+        if(mode === 'target' && rnd() < 0.55){
+          while(queue.length){
+            var k3 = queue.shift();
+            var p3 = k3.split(','), c3=+p3[0], r3=+p3[1];
+            if(isFree(c3,r3)){ pick=[c3,r3]; break; }
+          }
+        }
+        if(!pick) pick = randomHunt();
+      }
+
+      if(!pick) return null;
+      // 防御：绝不重复射击
+      if(shots[pick[1]][pick[0]] !== 0){
+        for(var rr=0;rr<SIZE;rr++) for(var cc2=0;cc2<SIZE;cc2++){
+          if(shots[rr][cc2]===0) return [cc2,rr];
+        }
+        return null;
+      }
+      return pick;
+    },
+
+    /* 反馈结果：'miss' | 'hit' | 'sunk'；sunk 时传沉没船的格子数组 */
+    feedback: function(c, r, result, sunkCells){
+      if(shots[r] === undefined || shots[r][c] === undefined) return;
+      if(shots[r][c] !== 0) return;
+      if(result === 'miss'){
+        shots[r][c] = 1;
+        return;
+      }
+      shots[r][c] = 2;
+      if(result === 'sunk'){
+        if(sunkCells){
+          sunkSizes.push(sunkCells.length);
+          markSunk(sunkCells);
+        }
+        // 该船已被击沉，清除它的所有跟踪信息，回到搜索模式
+        var sunkSet = {};
+        (sunkCells || []).forEach(function(p){ sunkSet[p[0]+','+p[1]] = 1; });
+        lastHits = lastHits.filter(function(h){ return !sunkSet[h[0]+','+h[1]]; });
+        queue = queue.filter(function(k){ return !sunkSet[k]; });
+        if(!lastHits.length){ queue = []; }
+        mode = lastHits.length ? 'target' : 'hunt';
+      } else {
+        lastHits.push([c,r]);
+        mode = 'target';
+        addNeighbors(c,r);
+      }
+    },
+
+    /* 供测试使用 */
+    _state: function(){ return { shots:cloneBoard(shots), queue:queue.slice(), mode:mode }; },
+    _setState: function(st){ shots = cloneBoard(st.shots); queue = (st.queue||[]).slice(); mode = st.mode || 'hunt'; }
+  };
+}
+
+var Engine = {
+  SIZE:SIZE, LETTERS:LETTERS, SHIPS:SHIPS,
+  coordName:coordName, emptyBoard:emptyBoard, cloneBoard:cloneBoard,
+  inBounds:inBounds, shipCells:shipCells, canPlace:canPlace,
+  allPlacements:allPlacements, makeFleet:makeFleet, fleetPlace:fleetPlace,
+  randomFleet:randomFleet, fleetAllSunk:fleetAllSunk, shipAt:shipAt,
+  fleetFire:fleetFire, createAI:createAI
+};
+
+if(typeof module !== 'undefined' && module.exports){ module.exports = Engine; }
+global.BS = Engine;
+
+})(typeof window !== 'undefined' ? window : globalThis);
+
+
+/* =========================================================================
+   DOM 层
+   ========================================================================= */
+(function(){
+'use strict';
+if(typeof document === 'undefined') return;
+
+var E = window.BS;
+var SIZE = E.SIZE, LETTERS = E.LETTERS, SHIPS = E.SHIPS;
+
+var state = {
+  phase:'place',          // place | battle | over
+  difficulty:'normal',
+  turn:'you',             // you | ai
+  horiz:true,
+  nextShip:0,
+  myFleet:E.makeFleet(),
+  foeFleet:E.makeFleet(),
+  placedCount:0,          // 已放置船数（用于撤消/重放）
+  history:[],             // {c,r,by,result} 用于显示
+  myAI:E.createAI('normal'),
+  aiTimer:null,
+  busy:false
+};
+
+var $ = function(id){ return document.getElementById(id); };
+var myGrid, foeGrid, logEl;
+
+/* ---------- 构建网格 ---------- */
+/* 表头占据第 1 行 / 第 1 列，棋盘格从第 2 行第 2 列开始 */
+function buildGrid(gridEl, side){
+  while(gridEl.children.length > 1) gridEl.removeChild(gridEl.lastChild);
+  for(var c=0;c<SIZE;c++){
+    var h = document.createElement('div');
+    h.className = 'colhead'; h.textContent = LETTERS[c];
+    h.style.gridColumn = (c+2); h.style.gridRow = 1;
+    gridEl.appendChild(h);
+  }
+  for(var r=0;r<SIZE;r++){
+    var rh = document.createElement('div');
+    rh.className = 'rowhead'; rh.textContent = (r+1);
+    rh.style.gridColumn = 1; rh.style.gridRow = (r+2);
+    gridEl.appendChild(rh);
+  }
+  for(var rr=0;rr<SIZE;rr++){
+    for(var cc=0;cc<SIZE;cc++){
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.c = cc; cell.dataset.r = rr; cell.dataset.side = side;
+      cell.style.gridColumn = (cc+2); cell.style.gridRow = (rr+2);
+      cell.setAttribute('role','button');
+      cell.setAttribute('aria-label', E.coordName(cc,rr));
+      gridEl.appendChild(cell);
+    }
+  }
+}
+function cellAt(gridEl, c, r){
+  return gridEl.querySelector('.cell[data-c="' + c + '"][data-r="' + r + '"]');
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  renderMyBoard();
+  renderFoeBoard();
+  renderStatus();
+  renderControls();
+}
+
+function renderMyBoard(){
+  var fleet = state.myFleet;
+  for(var r=0;r<SIZE;r++) for(var c=0;c<SIZE;c++){
+    var cell = cellAt(myGrid,c,r);
+    cell.className = 'cell';
+    var ship = E.shipAt(fleet,c,r);
+    if(ship){
+      cell.classList.add('ship');
+      if(ship.hits.length >= ship.size) cell.classList.add('sunk-ally');
+    }
+    var shot = state.myShots ? state.myShots[r][c] : 0;
+    var h = state.myShotsHit ? state.myShotsHit[r][c] : 0;
+    if(h === 1){ cell.classList.add('miss'); }
+    if(h === 2){
+      if(ship && ship.hits.length >= ship.size) cell.classList.add('sunk-ally');
+      else cell.classList.add('hit');
+    }
+  }
+  // 预览
+  if(state.phase === 'place' && state.hover && state.nextShip < SHIPS.length){
+    var sh = SHIPS[state.nextShip];
+    var cells = E.shipCells(state.hover[0], state.hover[1], sh.size, state.horiz);
+    var legal = cells && E.canPlace(state.myFleet.occupied, state.hover[0], state.hover[1], sh.size, state.horiz);
+    var list = cells || [];
+    if(!cells){
+      // 越界：逐格标记能落到的部分
+      list = [];
+      for(var i=0;i<sh.size;i++){
+        var cc = state.hover[0] + (state.horiz?i:0);
+        var rr = state.hover[1] + (state.horiz?0:i);
+        if(E.inBounds(cc,rr)) list.push([cc,rr]);
+      }
+    }
+    list.forEach(function(p){
+      var cl = cellAt(myGrid,p[0],p[1]);
+      cl.classList.add(legal ? 'preview-ok' : 'preview-bad');
+    });
+  }
+  if(state.phase !== 'place'){
+    Array.prototype.forEach.call(myGrid.querySelectorAll('.cell'), function(el){ el.classList.add('flat'); });
+  }
+}
+
+function renderFoeBoard(){
+  var g = state.foeShots || E.emptyBoard(0);
+  for(var r=0;r<SIZE;r++) for(var c=0;c<SIZE;c++){
+    var cell = cellAt(foeGrid,c,r);
+    cell.className = 'cell';
+    var v = g[r][c];
+    if(v === 1){
+      cell.classList.add('miss');
+      cell.classList.add('flat');
+    } else if(v === 3){
+      cell.classList.add('sunk'); cell.classList.add('flat');
+    } else if(v === 2){
+      // 命中：整船是否已沉？
+      var ship = E.shipAt(state.foeFleet,c,r);
+      if(ship && ship.hits.length >= ship.size) cell.classList.add('sunk');
+      else cell.classList.add('hit');
+      cell.classList.add('flat');
+    }
+    if(state.phase === 'battle' && state.turn === 'you' && !state.busy && v === 0){
+      cell.classList.remove('flat');
+    } else {
+      cell.classList.add('flat');
+    }
+  }
+}
+
+function lives(listEl, fleet){
+  listEl.innerHTML = '';
+  fleet.ships.forEach(function(s){
+    var d = document.createElement('span');
+    d.className = 'shipdot' + (s.hits.length >= s.size ? ' dead' : '');
+    d.title = s.name + '（' + s.size + '格）';
+    listEl.appendChild(d);
+  });
+}
+
+function renderStatus(){
+  lives($('myLives'), state.myFleet);
+  lives($('foeLives'), state.foeFleet);
+  $('leftToPlace').textContent = Math.max(0, SHIPS.length - state.placedCount);
+  var pill = $('phasePill');
+  if(state.phase === 'place'){ pill.className = 'pill idle'; pill.textContent = '布阵阶段'; }
+  else if(state.phase === 'over'){ pill.className = 'pill over'; pill.textContent = '战斗结束'; }
+  else if(state.turn === 'you'){ pill.className = 'pill you'; pill.textContent = '轮到你开火'; }
+  else { pill.className = 'pill ai'; pill.textContent = '电脑思考中…'; }
+
+  $('myPanel').classList.toggle('armed', state.phase==='place' || (state.phase==='battle' && state.turn==='ai'));
+  $('foePanel').classList.toggle('armed', state.phase==='battle' && state.turn==='you' && !state.busy);
+
+  var pl = $('placeList'); pl.innerHTML='';
+  SHIPS.forEach(function(s,i){
+    var chip = document.createElement('span');
+    chip.className = 'place-chip' + (i < state.placedCount ? ' done' : (i === state.nextShip && state.phase==='place' ? ' active' : ''));
+    var mini = '<span class="mini">';
+    for(var k=0;k<s.size;k++) mini += '<i></i>';
+    mini += '</span>';
+    chip.innerHTML = mini + s.name + ' · ' + s.size + '格';
+    pl.appendChild(chip);
+  });
+
+  $('myHint').innerHTML = state.phase === 'place'
+    ? '点击格子放置舰船 · <kbd>R</kbd> 或右键切换方向（当前：' + (state.horiz?'横向':'纵向') + '）'
+    : '这里显示你的舰船与敌方命中情况。';
+}
+
+function renderControls(){
+  $('btnStart').disabled = !(state.phase === 'place' && state.placedCount >= SHIPS.length);
+  $('btnRotate').disabled = state.phase !== 'place';
+  $('btnRandom').disabled = false;
+  $('btnReset').disabled = state.phase === 'place' && state.placedCount === 0;
+}
+
+function log(text, cls){
+  var li = document.createElement('li');
+  li.className = cls || '';
+  li.textContent = text;
+  logEl.insertBefore(li, logEl.firstChild);
+  while(logEl.children.length > 60) logEl.removeChild(logEl.lastChild);
+}
+
+/* ---------- 布阵交互 ---------- */
+function doRotate(){
+  if(state.phase !== 'place') return;
+  state.horiz = !state.horiz;
+  renderMyBoard(); renderStatus();
+}
+function doRandom(){
+  if(state.phase !== 'place') return;
+  state.myFleet = E.randomFleet();
+  state.placedCount = SHIPS.length;
+  state.nextShip = SHIPS.length;
+  state.hover = null;
+  render();
+}
+function doReset(){
+  state.myFleet = E.makeFleet();
+  state.placedCount = 0; state.nextShip = 0; state.hover = null;
+  state.myShots = E.emptyBoard(0); state.myShotsHit = E.emptyBoard(0);
+  render();
+  log('已清空重新布阵。', '');
+}
+function tryPlace(c, r){
+  if(state.phase !== 'place') return;
+  if(state.placedCount >= SHIPS.length) return;
+  var sh = SHIPS[state.nextShip];
+  if(!E.canPlace(state.myFleet.occupied, c, r, sh.size, state.horiz)){
+    // 判断是越界还是重叠，给出更精确的反馈
+    var cells = E.shipCells(c, r, sh.size, state.horiz);
+    if(!cells){ log('放不下：超出棋盘边界。', 'bad'); }
+    else { log('放不下：与已有舰船重叠。', 'bad'); }
+    return;
+  }
+  var cells2 = E.shipCells(c, r, sh.size, state.horiz);
+  E.fleetPlace(state.myFleet, state.nextShip, cells2);
+  state.placedCount++;
+  state.nextShip = state.placedCount;
+  state.hover = null;
+  log('已放置「' + sh.name + '」于 ' + E.coordName(c,r) + '（' + (state.horiz?'横':'竖') + '向，' + sh.size + '格）。', 'you');
+  render();
+}
+
+/* ---------- 战斗 ---------- */
+function startBattle(){
+  if(state.phase !== 'place') return;
+  if(state.placedCount < SHIPS.length){
+    log('请先放置全部 ' + SHIPS.length + ' 艘舰船。', 'bad');
+    return;
+  }
+  state.phase = 'battle';
+  state.turn = 'you';
+  state.busy = false;
+  state.foeFleet = E.randomFleet();
+  state.foeShots = E.emptyBoard(0);      // 对敌方海域的射击记录（玩家视角）
+  state.myShots = E.emptyBoard(0);       // 对己方海域的射击记录（AI 打出的）
+  state.myShotsHit = E.emptyBoard(0);
+  state.history = [];
+  state.hover = null;
+  state.myAI = E.createAI(state.difficulty);
+  log('战斗开始！你先行。难度：' + diffName(state.difficulty) + '。', 'good');
+  render();
+}
+function diffName(d){ return d==='easy'?'简单':(d==='hard'?'困难':'普通'); }
+
+function playerFire(c, r){
+  if(state.phase !== 'battle' || state.turn !== 'you' || state.busy) return;
+  if(state.foeShots[r][c] !== 0) return;
+  var res = E.fleetFire(state.foeFleet, c, r);
+  var name = E.coordName(c,r);
+  if(res === 'miss'){
+    state.foeShots[r][c] = 1;
+    log('你开火 ' + name + '：未命中。', '');
+  } else {
+    state.foeShots[r][c] = res === 'sunk' ? 3 : 2;
+    if(res === 'sunk'){
+      var ship = E.shipAt(state.foeFleet,c,r);
+      log('你击沉了电脑的「' + ship.name + '」！', 'good');
+      markSunkOnFoe(ship);
+    } else {
+      log('你击中了 ' + name + '！', 'you');
+    }
+  }
+  pulse(foeGrid,c,r);
+  render();
+
+  if(E.fleetAllSunk(state.foeFleet)){ endGame('you'); return; }
+
+  state.turn = 'ai';
+  state.busy = true;
+  render();
+  scheduleAI();
+}
+
+function markSunkOnFoe(ship){
+  ship.cells.forEach(function(p){
+    state.foeShots[p[1]][p[0]] = 3;
+  });
+}
+
+function pulse(gridEl,c,r){
+  var el = cellAt(gridEl,c,r);
+  el.classList.remove('last');
+  void el.offsetWidth;
+  el.classList.add('last');
+}
+
+function scheduleAI(){
+  clearTimeout(state.aiTimer);
+  state.aiTimer = setTimeout(aiTurn, 620);
+}
+
+function aiTurn(){
+  if(state.phase !== 'battle' || state.turn !== 'ai') return;
+  var pick = state.myAI.nextShot();
+  if(!pick){ // 理论上不会发生；兜底
+    state.turn = 'you'; state.busy = false; render(); return;
+  }
+  var c = pick[0], r = pick[1];
+  // 绝不重复
+  if(state.myShotsHit[r][c] !== 0){ state.turn='you'; state.busy=false; render(); return; }
+  var res = E.fleetFire(state.myFleet, c, r);
+  var name = E.coordName(c,r);
+  var sunkCells = null;
+  if(res === 'repeat'){
+    state.myAI.feedback(c,r,'miss');
+    state.myShotsHit[r][c] = 1;
+    log('电脑开火 ' + name + '：未命中。', 'ai');
+  } else if(res === 'miss'){
+    state.myAI.feedback(c,r,'miss');
+    state.myShotsHit[r][c] = 1;
+    log('电脑开火 ' + name + '：未命中。', 'ai');
+  } else if(res === 'hit'){
+    state.myAI.feedback(c,r,'hit');
+    state.myShotsHit[r][c] = 2;
+    log('电脑击中了你的 ' + name + '！', 'bad');
+  } else if(res === 'sunk'){
+    var ship = E.shipAt(state.myFleet,c,r);
+    sunkCells = ship.cells.map(function(p){ return [p[0],p[1]]; });
+    state.myAI.feedback(c,r,'sunk',ship.cells);
+    state.myShotsHit[r][c] = 2;
+    ship.cells.forEach(function(p){ state.myShotsHit[p[1]][p[0]] = 2; });
+    log('电脑击沉了你的「' + ship.name + '」！', 'bad');
+  }
+  pulse(myGrid,c,r);
+  render();
+
+  if(E.fleetAllSunk(state.myFleet)){ endGame('ai'); return; }
+
+  state.turn = 'you';
+  state.busy = false;
+  render();
+}
+
+function endGame(winner){
+  state.phase = 'over';
+  state.turn = null;
+  state.busy = false;
+  clearTimeout(state.aiTimer);
+  render();
+  var win = winner === 'you';
+  $('ovIcon').textContent = win ? '🏆' : '💥';
+  $('ovTitle').textContent = win ? '胜利！' : '战败…';
+  $('ovTitle').className = win ? 'win' : 'lose';
+  var myLeft = state.myFleet.ships.filter(function(s){ return s.hits.length < s.size; }).length;
+  var foeLeft = state.foeFleet.ships.filter(function(s){ return s.hits.length < s.size; }).length;
+  $('ovText').textContent = win
+    ? ('你击沉了电脑全部 3 艘舰船，自身还剩 ' + myLeft + ' 艘。难度：' + diffName(state.difficulty) + '。')
+    : ('你的舰队被全歼了，电脑还剩 ' + foeLeft + ' 艘。换个策略再试试？');
+  $('overlay').classList.add('show');
+  log(win ? '★ 你赢了！' : '× 你输了。', win ? 'good' : 'bad');
+}
+
+function newGame(){
+  clearTimeout(state.aiTimer);
+  $('overlay').classList.remove('show');
+  state.phase = 'place';
+  state.turn = 'you';
+  state.busy = false;
+  state.horiz = true;
+  state.placedCount = 0; state.nextShip = 0; state.hover = null;
+  state.myFleet = E.makeFleet();
+  state.foeFleet = E.makeFleet();
+  state.foeShots = E.emptyBoard(0);
+  state.myShots = E.emptyBoard(0);
+  state.myShotsHit = E.emptyBoard(0);
+  logEl.innerHTML = '';
+  log('新的一局。请布阵，或直接点「随机布阵」。', 'good');
+  render();
+}
+
+/* ---------- 事件绑定（点击 + 触摸友好） ---------- */
+function bindEvents(){
+  function hit(e){
+    var t = e.target.closest ? e.target.closest('.cell') : null;
+    if(!t) return null;
+    return { c:+t.dataset.c, r:+t.dataset.r, side:t.dataset.side };
+  }
+  myGrid.addEventListener('click', function(e){
+    var h = hit(e); if(!h) return;
+    if(state.phase === 'place') tryPlace(h.c, h.r);
+  });
+  myGrid.addEventListener('mousemove', function(e){
+    if(state.phase !== 'place') return;
+    var h = hit(e); if(!h) return;
+    if(!state.hover || state.hover[0]!==h.c || state.hover[1]!==h.r){
+      state.hover = [h.c,h.r]; renderMyBoard();
+  }
+  });
+  myGrid.addEventListener('mouseleave', function(){
+    if(state.hover){ state.hover = null; renderMyBoard(); }
+  });
+  myGrid.addEventListener('contextmenu', function(e){
+    e.preventDefault(); doRotate();
+  });
+  myGrid.addEventListener('touchstart', function(e){
+    if(state.phase !== 'place') return;
+    var t = e.touches && e.touches[0];
+    if(!t) return;
+    var el = document.elementFromPoint(t.clientX, t.clientY);
+    var hitEl = el && el.closest ? el.closest('.cell') : null;
+    if(hitEl && hitEl.dataset.side === 'mine'){
+      state.hover = [+hitEl.dataset.c, +hitEl.dataset.r];
+      renderMyBoard();
+    }
+  }, {passive:true});
+  foeGrid.addEventListener('click', function(e){
+    var h = hit(e); if(!h) return;
+    playerFire(h.c, h.r);
+  });
+  foeGrid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+  $('btnStart').addEventListener('click', startBattle);
+  $('btnRotate').addEventListener('click', doRotate);
+  $('btnRandom').addEventListener('click', doRandom);
+  $('btnReset').addEventListener('click', doReset);
+  $('ovAgain').addEventListener('click', newGame);
+  $('diffs').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-diff]');
+    if(!b) return;
+    state.difficulty = b.dataset.diff;
+    Array.prototype.forEach.call($('diffs').children, function(x){
+      x.classList.toggle('active', x === b);
+    });
+    if(state.phase === 'battle' && !state.busy){
+      log('难度已切换为「' + diffName(state.difficulty) + '」（对电脑后续决策生效）。', '');
+    } else {
+      log('难度：' + diffName(state.difficulty) + '。', '');
+    }
+  });
+  document.addEventListener('keydown', function(e){
+    var k = e.key ? e.key.toLowerCase() : '';
+    if(k === 'r'){ doRotate(); }
+    if(k === ' ' && state.phase === 'place'){ e.preventDefault(); doRandom(); }
+  });
+}
+
+function init(){
+  myGrid = $('myGrid'); foeGrid = $('foeGrid'); logEl = $('log');
+  state.myShots = E.emptyBoard(0);
+  state.myShotsHit = E.emptyBoard(0);
+  state.foeShots = E.emptyBoard(0);
+  buildGrid(myGrid, 'mine');
+  buildGrid(foeGrid, 'foe');
+  bindEvents();
+  log('欢迎！先放置你的 3 艘舰船（3 / 2 / 2 格）。', 'good');
+  render();
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+/* 暴露给自动化测试 */
+window.__BS_GAME = {
+  state: state,
+  newGame: newGame,
+  startBattle: startBattle,
+  tryPlace: tryPlace,
+  doRotate: doRotate,
+  doRandom: doRandom,
+  doReset: doReset,
+  playerFire: playerFire,
+  aiTurn: aiTurn,
+  render: render,
+  cellAt: function(c,r){ return cellAt(foeGrid,c,r); },
+  myCellAt: function(c,r){ return cellAt(myGrid,c,r); }
+};
+
+})();
+</script>
+</body>
+</html>

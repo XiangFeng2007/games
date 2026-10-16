@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>五子棋</title>
+<meta name="description" content="15×15 五子棋，人机对战（简单/普通/困难）与双人同屏，纯离线单文件。">
+<style>
+:root{
+  --accent:#6ea8ff;
+  --accent2:#a06bff;
+  --ok:#3ddc97;
+  --danger:#ff5d6c;
+  --warn:#ffc44d;
+  --text:#e8ecff;
+  --muted:#8f9ac0;
+  --panel:rgba(255,255,255,.055);
+  --line:rgba(255,255,255,.12);
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 640px at 12% -12%, #1c2a55 0%, transparent 60%),
+    radial-gradient(900px 560px at 37% 6%, #3a1f5c 0%, transparent 55%),
+    linear-gradient(180deg,#0b1020,#131a33);
+  background-attachment:fixed;
+  color:var(--text);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;min-height:100dvh;
+}
+#app{
+  max-width:720px;margin:0 auto;
+  padding:calc(16px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+}
+
+/* ---------- 头部 ---------- */
+header{text-align:center;margin-bottom:14px}
+.logo{display:inline-flex;align-items:center;gap:10px;font-size:22px;font-weight:800;letter-spacing:.5px}
+.logo .mark{
+  width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font-size:19px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 8px 22px rgba(110,168,255,.38)
+}
+header .sub{color:var(--muted);font-size:12.5px;margin-top:8px;line-height:1.6}
+
+/* ---------- 面板 ---------- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.controls{padding:10px;margin-bottom:10px}
+.seg{display:flex;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
+.seg button{
+  flex:1;min-width:0;border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;cursor:pointer;
+  transition:background .16s ease,color .16s ease;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation
+}
+.seg button:active{transform:scale(.97)}
+.seg button.on{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;box-shadow:0 4px 14px rgba(110,168,255,.32)
+}
+.seg button[disabled]{opacity:.38;cursor:not-allowed}
+.seg-wrap{display:flex;gap:8px;flex-wrap:wrap}
+.seg-wrap>div{flex:1 1 210px;min-width:0}
+.lbl{font-size:11px;color:var(--muted);letter-spacing:.4px;margin:0 0 5px 3px;font-weight:600}
+
+/* ---------- 状态条 ---------- */
+.statusbar{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:10px;
+  font-size:14px;font-weight:600;min-height:46px
+}
+.dot{
+  width:17px;height:17px;border-radius:50%;flex:0 0 auto;
+  background:#0d0f19;border:1px solid rgba(255,255,255,.34);
+  box-shadow:inset 0 -2px 4px rgba(255,255,255,.06)
+}
+.dot.w{background:#eef2ff;border-color:rgba(255,255,255,.7);box-shadow:inset 0 -3px 6px rgba(0,0,0,.22)}
+.dot.pulse{animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(110,168,255,.55)}
+  50%{box-shadow:0 0 0 7px rgba(110,168,255,0)}
+}
+#stText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stText.win{color:var(--ok)}
+#stText.lose{color:var(--danger)}
+#stText.draw{color:var(--warn)}
+#stInfo{font-size:11.5px;color:var(--muted);font-weight:500;flex:0 0 auto;font-variant-numeric:tabular-nums}
+
+/* ---------- 棋盘 ---------- */
+.board-wrap{padding:8px;margin-bottom:10px}
+.board-inner{position:relative;width:100%;aspect-ratio:1/1}
+canvas{
+  display:block;width:100%;height:100%;border-radius:8px;
+  touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent
+}
+canvas.locked{cursor:default}
+.thinking{
+  position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
+  display:none;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text);
+  padding:6px 13px;border-radius:999px;
+  background:rgba(11,16,32,.85);border:1px solid var(--line)
+}
+.thinking.show{display:flex}
+.spin{
+  width:13px;height:13px;border-radius:50%;
+  border:2px solid rgba(110,168,255,.3);border-top-color:var(--accent);
+  animation:spin .7s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- 按钮 ---------- */
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{
+  border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);
+  font:inherit;font-size:14px;font-weight:600;padding:12px 10px;border-radius:12px;cursor:pointer;
+  transition:background .16s ease,transform .12s ease;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px
+}
+.btn:hover{background:rgba(255,255,255,.1)}
+.btn:active{transform:scale(.975)}
+.btn[disabled]{opacity:.4;cursor:not-allowed;transform:none}
+.btn .k{font-size:15px}
+
+/* ---------- 底部 ---------- */
+footer{margin-top:14px;text-align:center;color:var(--muted);font-size:11.5px;line-height:1.9}
+footer b{color:var(--text);font-weight:600}
+
+@media (max-width:430px){
+  #app{padding-left:10px;padding-right:10px}
+  .logo{font-size:19px}
+  .logo .mark{width:32px;height:32px;font-size:17px;border-radius:10px}
+  header .sub{display:none}
+  .seg button{font-size:12px}
+  .statusbar{font-size:13px;padding:8px 10px}
+  #stInfo{display:none}
+  .btn{font-size:13px;padding:11px 8px}
+  .board-wrap{padding:5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .dot.pulse{animation:none}
+  .btn,.seg button{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo"><span class="mark">⚫</span><span>五子棋</span></div>
+    <p class="sub">15×15 棋盘 · 先连成五子者胜 · 手机点按、电脑点击均可落子</p>
+  </header>
+
+  <div class="panel controls">
+    <div class="seg-wrap">
+      <div>
+        <p class="lbl">对战模式</p>
+        <div class="seg" id="segMode" role="group" aria-label="对战模式">
+          <button type="button" data-mode="ai" class="on">人机对战</button>
+          <button type="button" data-mode="pvp">双人同屏</button>
+        </div>
+      </div>
+      <div>
+        <p class="lbl">AI 难度</p>
+        <div class="seg" id="segDiff" role="group" aria-label="AI 难度">
+          <button type="button" data-diff="easy">简单</button>
+          <button type="button" data-diff="normal">普通</button>
+          <button type="button" data-diff="hard" class="on">困难</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel statusbar">
+    <span class="dot" id="stDot" aria-hidden="true"></span>
+    <span id="stText" aria-live="polite">黑方落子</span>
+    <span id="stInfo"></span>
+  </div>
+
+  <div class="panel board-wrap">
+    <div class="board-inner">
+      <canvas id="board" width="880" height="880"></canvas>
+      <div class="thinking" id="thinking"><span class="spin"></span><span>AI 思考中…</span></div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button type="button" class="btn" id="btnUndo"><span class="k">↶</span>悔棋</button>
+    <button type="button" class="btn" id="btnRestart"><span class="k">↻</span>重新开始</button>
+  </div>
+
+  <footer>
+    标准规则（无禁手）· 横、竖、斜任意方向连成五子即胜<br>
+    <b>已落子 <span id="moveCount">0</span> 手</b> · 纯离线单文件，可保存后双击运行
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function () {
+/* =========================================================================
+   0. 基础常量
+   ========================================================================= */
+var N = 15;
+var EMPTY = 0, BLACK = 1, WHITE = 2;
+var OPP = [0, WHITE, BLACK];
+var DIRS = [[0, 1], [1, 0], [1, 1], [-1, 1]];   // 横 / 竖 / 撇 / 捺
+
+var ACCENT = '#6ea8ff', ACCENT2 = '#a06bff', LAST_HL = '#ffc44d';
+var PAD = 0.80;            // 棋盘外留白（单位：格）
+
+/* 棋型分值（单条线取最大值） */
+var V_WIN    = 10000000;   // 成五
+var V_OPEN4  = 300000;     // 活四 / 双四（两个可成五点）
+var V_FOUR   = 15000;      // 冲四（一个可成五点）
+var V_OPEN3  = 12000;      // 活三
+var V_SLEEP3 = 900;        // 眠三
+var V_OPEN2  = 600;        // 活二
+var V_SLEEP2 = 80;         // 眠二
+
+function popcount(x) {
+  x = x - ((x >> 1) & 0x55555555);
+  x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+  x = (x + (x >> 4)) & 0x0f0f0f0f;
+  return (x * 0x01010101) >> 24;
+}
+
+/* =========================================================================
+   1. 线表：把棋盘切成 88 条线（横 15 + 竖 15 + 撇 29 + 捺 29）
+   ========================================================================= */
+var LINES = [];        // LINES[lineId] = [cellIdx, ...]（沿线顺序，长度 >= 5）
+var CELL_LINES = [];   // CELL_LINES[cell][d] = lineId
+var NLINES = 0;
+
+function buildLines() {
+  var i, r, c, cells, id;
+  for (i = 0; i < N * N; i++) CELL_LINES.push([-1, -1, -1, -1]);
+  function push(cells) {
+    if (cells.length < 5) return;
+    LINES.push(cells);
+  }
+  /* 横 */
+  for (r = 0; r < N; r++) { cells = []; for (c = 0; c < N; c++) cells.push(r * N + c); push(cells); }
+  /* 竖 */
+  for (c = 0; c < N; c++) { cells = []; for (r = 0; r < N; r++) cells.push(r * N + c); push(cells); }
+  /* 捺 \  (r - c 恒定) */
+  for (var k = -(N - 1); k <= N - 1; k++) {
+    cells = [];
+    for (r = 0; r < N; r++) { c = r - k; if (c >= 0 && c < N) cells.push(r * N + c); }
+    push(cells);
+  }
+  /* 撇 /  (r + c 恒定) */
+  for (var s = 0; s <= 2 * (N - 1); s++) {
+    cells = [];
+    for (r = 0; r < N; r++) { c = s - r; if (c >= 0 && c < N) cells.push(r * N + c); }
+    push(cells);
+  }
+  /* 反查：每个格点属于哪条线 */
+  for (id = 0; id < LINES.length; id++) {
+    cells = LINES[id];
+    for (i = 0; i < cells.length; i++) {
+      var a = cells[i], rr = (a / N) | 0, cc = a % N;
+      var d;
+      if (i > 0 || true) {
+        var b = i + 1 < cells.length ? cells[i + 1] : -1;
+        var p = i > 0 ? cells[i - 1] : -1;
+        var dr = (b >= 0 ? ((b / N) | 0) - rr : (p >= 0 ? rr - ((p / N) | 0) : 0));
+        var dc = (b >= 0 ? (b % N) - cc : (p >= 0 ? cc - (p % N) : 0));
+        if (dr === 0 && dc === 1) d = 0;
+        else if (dr === 1 && dc === 0) d = 1;
+        else if (dr === 1 && dc === -1) d = 2;   // 撇 /
+        else d = 3;                              // 捺 \
+      }
+      CELL_LINES[a][d] = id;
+    }
+  }
+  NLINES = LINES.length;
+}
+
+/* 兜底：若某格点在某个方向上没有长度 >=5 的线，则建一条单点线 */
+function ensureCellLines() {
+  var idx, d;
+  for (idx = 0; idx < N * N; idx++) {
+    for (d = 0; d < 4; d++) {
+      if (CELL_LINES[idx][d] >= 0) continue;
+      var r = (idx / N) | 0, c = idx % N, cells = [], k;
+      for (k = -4; k <= 4; k++) {
+        var rr = r + k * DIRS[d][0], cc = c + k * DIRS[d][1];
+        if (rr < 0 || rr >= N || cc < 0 || cc >= N) continue;
+        cells.push(rr * N + cc);
+      }
+      LINES.push(cells);
+      CELL_LINES[idx][d] = LINES.length - 1;
+    }
+  }
+  NLINES = LINES.length;
+}
+
+/* =========================================================================
+   2. 棋型识别核心
+   -------------------------------------------------------------------------
+   classify(own, opp, L)：把一条线（位串）分类成棋型。
+   - winPts：能立刻成五的空点（位掩码）
+     · >=2 个  -> 活四 / 双四（对手只能堵一个，必败）
+     · ==1 个  -> 冲四（对手必须堵）
+   - open3：某个空点落子后能形成「两个成五点」=> 活三
+   - sleep3：某个空点落子后能形成「一个成五点」=> 眠三
+   - open2 / sleep2：两子的发展型
+   ========================================================================= */
+var hitBuf = new Int8Array(16);
+
+function classify(own, opp, L) {
+  var i, w, k, e;
+  var winPts = 0;
+  var open2 = false, sleep2 = false;
+  var hasK3 = false;
+  for (i = 0; i < L; i++) hitBuf[i] = 0;
+
+  for (i = 0; i + 5 <= L; i++) {
+    w = 31 << i;
+    if (opp & w) continue;                 // 窗口内有对方子 -> 无发展价值
+    k = popcount(own & w);
+    if (k === 5) return V_WIN;
+    if (k === 4) {
+      winPts |= ((~own) & w);              // 唯一的空位即「成五点」
+    } else if (k === 3) {
+      hasK3 = true;
+      e = (~own) & w;
+      hitBuf[i + (e & 1 ? 0 : (e & 2 ? 1 : 2))]++;
+      hitBuf[i + (e & 4 ? 2 : (e & 8 ? 3 : 4))]++;
+    } else if (k === 2) {
+      sleep2 = true;
+    }
+  }
+  if (winPts) {
+    var wp = popcount(winPts);
+    if (wp >= 2) return V_OPEN4;
+    return V_FOUR;
+  }
+  /* 活三：存在一个空点，落在 >=2 个「3 子窗口」里（落子后同时产生两个成五点） */
+  var best = 0;
+  for (i = 0; i < L; i++) if (hitBuf[i] > best) best = hitBuf[i];
+  if (best >= 2) return V_OPEN3;
+  if (hasK3) return V_SLEEP3;
+  /* 活二：4 长窗口内恰有 2 子且无对方子 */
+  for (i = 0; i + 4 <= L; i++) {
+    w = 15 << i;
+    if (opp & w) continue;
+    if (popcount(own & w) === 2) { open2 = true; break; }
+  }
+  if (open2) return V_OPEN2;
+  if (sleep2) return V_SLEEP2;
+  return 0;
+}
+
+/* =========================================================================
+   3. 增量评估（AI 搜索使用）
+   ========================================================================= */
+var SB = new Int8Array(N * N);                 // 搜索用棋盘
+var SVal = [null, null, null];                 // SVal[color][lineId]
+var SSum = [0, 0, 0];                          // 各方总分
+var SEl = 0;                                   // 已落子数
+var frCnt = new Int16Array(N * N);             // 2 格邻域内的棋子数
+var NEI = [];                                  // NEI[idx] = 周围 2 格（不含自身）的格点
+var frontier = [];                             // 当前所有「附近有子」的空点
+var posOf = new Int16Array(N * N);             // frontier 中的下标
+
+function buildNeighbors() {
+  for (var idx = 0; idx < N * N; idx++) {
+    var r = (idx / N) | 0, c = idx % N, list = [];
+    for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      var rr = r + dr, cc = c + dc;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N) continue;
+      list.push(rr * N + cc);
+    }
+    NEI.push(list);
+  }
+}
+function frontierAdd(n) {
+  frCnt[n]++;
+  if (frCnt[n] === 1) { posOf[n] = frontier.length; frontier.push(n); }
+}
+function frontierDel(n) {
+  frCnt[n]--;
+  if (frCnt[n] === 0) {
+    var j = posOf[n], last = frontier.pop();
+    if (j < frontier.length) { frontier[j] = last; posOf[last] = j; }
+  }
+}
+
+function initSearch() {
+  SVal[BLACK] = new Int32Array(NLINES);
+  SVal[WHITE] = new Int32Array(NLINES);
+}
+
+function recomputeLine(li) {
+  var cells = LINES[li], L = cells.length, i, v;
+  var o1 = 0, o2 = 0;
+  for (i = 0; i < L; i++) {
+    v = SB[cells[i]];
+    if (v === BLACK) o1 |= 1 << i;
+    else if (v === WHITE) o2 |= 1 << i;
+  }
+  var v1 = classify(o1, o2, L);
+  var v2 = classify(o2, o1, L);
+  var old1 = SVal[BLACK][li]; SSum[BLACK] += v1 - old1; SVal[BLACK][li] = v1;
+  var old2 = SVal[WHITE][li]; SSum[WHITE] += v2 - old2; SVal[WHITE][li] = v2;
+}
+
+function touchedLines(idx) {
+  var cl = CELL_LINES[idx];
+  recomputeLine(cl[0]); recomputeLine(cl[1]); recomputeLine(cl[2]); recomputeLine(cl[3]);
+}
+
+function putStone(idx, color) {
+  SB[idx] = color; SEl++;
+  var l = NEI[idx];
+  for (var i = 0; i < l.length; i++) frontierAdd(l[i]);
+  touchedLines(idx);
+}
+function takeStone(idx) {
+  SB[idx] = 0; SEl--;
+  var l = NEI[idx];
+  for (var i = 0; i < l.length; i++) frontierDel(l[i]);
+  touchedLines(idx);
+}
+
+function prepareSearch(boardIn) {
+  var i, j, l;
+  for (i = 0; i < N * N; i++) { SB[i] = boardIn[i]; frCnt[i] = 0; }
+  SSum[BLACK] = 0; SSum[WHITE] = 0; SEl = 0;
+  frontier.length = 0;
+  for (i = 0; i < NLINES; i++) { SVal[BLACK][i] = 0; SVal[WHITE][i] = 0; }
+  for (i = 0; i < N * N; i++) {
+    if (SB[i] === 0) continue;
+    SEl++;
+    l = NEI[i];
+    for (j = 0; j < l.length; j++) frontierAdd(l[j]);
+  }
+  for (i = 0; i < NLINES; i++) recomputeLine(i);
+}
+
+/* =========================================================================
+   4. 胜负判定
+   ========================================================================= */
+function checkWin(bd, idx) {
+  var color = bd[idx];
+  if (!color) return false;
+  var r = (idx / N) | 0, c = idx % N;
+  for (var d = 0; d < 4; d++) {
+    var dx = DIRS[d][0], dy = DIRS[d][1], cnt = 1, k, rr, cc;
+    for (k = 1; k < 5; k++) {
+      rr = r + k * dx; cc = c + k * dy;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break;
+      cnt++;
+    }
+    for (k = 1; k < 5; k++) {
+      rr = r - k * dx; cc = c - k * dy;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break;
+      cnt++;
+    }
+    if (cnt >= 5) return true;
+  }
+  return false;
+}
+
+function findWinLine(bd, idx) {
+  var color = bd[idx]; if (!color) return null;
+  var r = (idx / N) | 0, c = idx % N;
+  for (var d = 0; d < 4; d++) {
+    var dx = DIRS[d][0], dy = DIRS[d][1], cells = [idx], k, rr, cc;
+    for (k = 1; k < 5; k++) {
+      rr = r + k * dx; cc = c + k * dy;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break;
+      cells.push(rr * N + cc);
+    }
+    for (k = 1; k < 5; k++) {
+      rr = r - k * dx; cc = c - k * dy;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break;
+      cells.push(rr * N + cc);
+    }
+    if (cells.length >= 5) { cells.sort(function (a, b) { return a - b; }); return cells; }
+  }
+  return null;
+}
+
+/* =========================================================================
+   5. 点评估：在 bd[idx] 落 color 子能获得的棋型总分（进攻分 / 防守分通用）
+   ========================================================================= */
+var pLineBuf = [];
+
+function pointScore(bd, idx, color) {
+  if (bd[idx] !== 0) return -1;
+  bd[idx] = color;
+  var total = 0, fours = 0, open3s = 0, open4 = false;
+  for (var d = 0; d < 4; d++) {
+    var li = CELL_LINES[idx][d];
+    var cells = LINES[li], L = cells.length, i, v;
+    var own = 0, opp = 0;
+    for (i = 0; i < L; i++) {
+      v = bd[cells[i]];
+      if (v === color) own |= 1 << i;
+      else if (v !== 0) opp |= 1 << i;
+    }
+    var val = classify(own, opp, L);
+    if (val === V_WIN) { bd[idx] = 0; return V_WIN; }
+    if (val === V_OPEN4) open4 = true;
+    else if (val === V_FOUR) fours++;
+    else if (val === V_OPEN3) open3s++;
+    total += val;
+  }
+  bd[idx] = 0;
+  /* 复合威胁：双四 / 四三 / 双三 都是必胜或强优 */
+  if (open4) return V_OPEN4 + 200000;
+  if (fours >= 2) return V_OPEN4 + 100000;
+  if (fours >= 1 && open3s >= 1) return V_OPEN4 + 50000;
+  if (open3s >= 2) return V_OPEN3 + 8000;
+  return total;
+}
+
+/* 快表：9 位邻域 -> 棋型分（只用于搜索内的走法排序，把对方子当作空） */
+var SHAPES = null;
+function buildShapes() {
+  if (SHAPES) return SHAPES;
+  SHAPES = [];
+  for (var d = 0; d < 4; d++) {
+    var arr = new Int32Array(512);
+    for (var k = 0; k < 512; k++) {
+      arr[k] = classify(k, 0, 9);
+    }
+    SHAPES.push(arr);
+  }
+  return SHAPES;
+}
+
+function quickScore(bd, idx, color) {
+  var r = (idx / N) | 0, c = idx % N, s = 0;
+  for (var d = 0; d < 4; d++) {
+    var dx = DIRS[d][0], dy = DIRS[d][1], key = 16;   // 中心位 = 假设落下自己的子
+    for (var k = -4; k <= 4; k++) {
+      if (k === 0) continue;
+      var rr = r + k * dx, cc = c + k * dy;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N) continue;
+      if (bd[rr * N + cc] === color) key |= 1 << (k + 4);
+    }
+    s += SHAPES[d][key];
+  }
+  return s;
+}
+
+/* =========================================================================
+   6. 候选点生成
+   ========================================================================= */
+function candidates(limit) {
+  var list = [], fi, idx, i;
+  for (fi = 0; fi < frontier.length; fi++) {
+    idx = frontier[fi];
+    /* 关键：frontier 记录的是「附近有子」的格子，其中**包含已被占用的格子**。
+       这里必须过滤掉，否则搜索会返回一个已有棋子的位置，
+       导致 AI 下在别人（或自己）的子上面 —— 曾经因此产生大量非法落子。 */
+    if (SB[idx] !== 0) continue;
+    var a = quickScore(SB, idx, BLACK);
+    var b = quickScore(SB, idx, WHITE);
+    var r = (idx / N) | 0, c = idx % N;
+    var center = 14 - (Math.abs(r - 7) + Math.abs(c - 7));
+    list.push({ i: idx, a: a, b: b, k: a * 1.05 + b * 0.95 + center * 4 });
+  }
+  list.sort(function (x, y) { return y.k - x.k; });
+  if (limit > 0 && list.length > limit) list.length = limit;
+  return list;
+}
+
+/* =========================================================================
+   7. 极小极大 + Alpha-Beta
+   ========================================================================= */
+var NODES = 0, DEADLINE = 0, TIMEOUT = false;
+/* 诊断：记录 aiChooseMove 走的是哪条分支（测试与调优用，不影响对局） */
+var DBG = { branch: '', candCount: 0, movesCount: 0 };
+
+function evalLeaf(aiColor) {
+  var me = SSum[aiColor], op = SSum[OPP[aiColor]];
+  return me - op * 1.15;
+}
+
+function negamax(side, depth, alpha, beta, aiColor) {
+  NODES++;
+  if ((NODES & 127) === 0 && Date.now() > DEADLINE) { TIMEOUT = true; }
+  if (TIMEOUT) return evalLeaf(aiColor);
+  if (depth <= 0) return evalLeaf(aiColor);
+
+  var mv = candidates(depth >= 3 ? 10 : 8);
+  if (!mv.length) return evalLeaf(aiColor);
+
+  var i, best, v, idx;
+  if (side === aiColor) {
+    best = -Infinity;
+    for (i = 0; i < mv.length; i++) {
+      idx = mv[i].i;
+      putStone(idx, side);
+      if (checkWin(SB, idx)) v = V_WIN * 10 + depth * 1000;
+      else v = negamax(OPP[side], depth - 1, alpha, beta, aiColor);
+      takeStone(idx);
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  best = Infinity;
+  for (i = 0; i < mv.length; i++) {
+    idx = mv[i].i;
+    putStone(idx, side);
+    if (checkWin(SB, idx)) v = -(V_WIN * 10 + depth * 1000);
+    else v = negamax(OPP[side], depth - 1, alpha, beta, aiColor);
+    takeStone(idx);
+    if (v < best) best = v;
+    if (best < beta) beta = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+/* =========================================================================
+   8. 三档难度
+   ========================================================================= */
+function collectThreats(bd, color) {
+  /* 返回 color 落子即胜的所有点 */
+  var out = [], fi, idx;
+  for (fi = 0; fi < frontier.length; fi++) {
+    idx = frontier[fi];
+    if (bd[idx] !== 0) continue;
+    bd[idx] = color;
+    if (checkWin(bd, idx)) out.push(idx);
+    bd[idx] = 0;
+  }
+  return out;
+}
+
+function allScored(bd, color, opp) {
+  /* 对每个候选点算 (进攻分, 防守分) */
+  var out = [], fi, idx;
+  for (fi = 0; fi < frontier.length; fi++) {
+    idx = frontier[fi];
+    if (bd[idx] !== 0) continue;
+    var a = pointScore(bd, idx, color);
+    var d = pointScore(bd, idx, opp);
+    out.push({ i: idx, atk: a, def: d, key: a * 1.05 + d * 0.95 });
+  }
+  out.sort(function (x, y) { return y.key - x.key; });
+  return out;
+}
+
+function aiChooseMove(boardIn, aiColor, level, rng) {
+  var opp = OPP[aiColor];
+  prepareSearch(boardIn);
+  var i, idx;
+  DBG.branch = 'start';
+
+  /* --- 空盘：天元 --- */
+  if (SEl === 0) { DBG.branch = 'empty'; return 7 * N + 7; }
+
+  var moves = allScored(SB, aiColor, opp);
+  DBG.movesCount = moves.length;
+  if (!moves.length) {
+    DBG.branch = 'no-moves';
+    for (i = 0; i < N * N; i++) if (SB[i] === 0) return i;
+    return -1;
+  }
+
+  /* --- 1. 自己能成五：立刻赢 --- */
+  for (i = 0; i < moves.length; i++) if (moves[i].atk === V_WIN) { DBG.branch = 'win-now'; return moves[i].i; }
+
+  /* --- 2. 对方下一步能成五：必须堵 --- */
+  var blocks = [];
+  for (i = 0; i < moves.length; i++) if (moves[i].def === V_WIN) blocks.push(moves[i].i);
+  if (blocks.length) { DBG.branch = 'block-win'; return blocks[0]; }
+
+  if (level === 'easy') { DBG.branch = 'easy'; return easyMove(SB, aiColor, opp, rng, moves); }
+  if (level === 'normal') { DBG.branch = 'normal'; return normalMove(SB, aiColor, opp, rng, moves); }
+
+  /* --- 3. 自己能造活四 / 双四：必胜着 --- */
+  for (i = 0; i < moves.length; i++) if (moves[i].atk >= V_OPEN4) { DBG.branch = 'make-open4'; return moves[i].i; }
+
+  /* --- 3.5 对方能造活四（活三的堵点）：必须抢着堵 ---
+     活四挡不住（两端都能成五），所以对方一旦能造活四，这盘基本就输了。
+     堵点的 def 分就是「对方下在这里能拿到多少」，因此 def >= V_OPEN4
+     说明对方在此处能做出活四/双四，属于必须应对的威胁。
+     注意：前面已确认自己不能一步成五、也不能造活四，所以这里只能防守。 */
+  var mustBlock = -1, blockScore = -1;
+  for (i = 0; i < moves.length; i++) {
+    if (moves[i].def >= V_OPEN4) {
+      // 同样紧急时，选「自己下这里收益也大」的那个（进攻性防守）
+      var s = moves[i].def + moves[i].atk * 0.5;
+      if (s > blockScore) { blockScore = s; mustBlock = moves[i].i; }
+    }
+  }
+  if (mustBlock >= 0) { DBG.branch = 'block-open3'; return mustBlock; }
+
+  /* 注意：这里**不要**为普通冲四（def >= V_FOUR）直接返回。
+     冲四只有一端能成五，对手下完我们还能再堵，属于「可延后处理」，
+     应当交给下面的深度搜索去权衡（进攻换防守往往更优）。
+     早期版本在这里提前 return，导致搜索永远不执行、困难档反而不如普通档。 */
+
+  /* --- 4. 困难：极小极大 + Alpha-Beta 深度 4 --- */
+  DEADLINE = Date.now() + 900;
+  TIMEOUT = false; NODES = 0;
+  var rootMoves = [];
+  var cand = candidates(12);
+  /* 根节点用精确评分重新排序：防守分权重提高，
+     避免 AI 只顾进攻而忽视对方正在成形的威胁。 */
+  for (i = 0; i < cand.length; i++) {
+    var a = pointScore(SB, cand[i].i, aiColor);
+    var d = pointScore(SB, cand[i].i, opp);
+    rootMoves.push({ i: cand[i].i, k: a * 1.0 + d * 1.15 });
+  }
+  rootMoves.sort(function (x, y) { return y.k - x.k; });
+  if (!rootMoves.length) { DBG.branch = 'search-no-root'; return moves[0].i; }
+
+  var alpha = -Infinity, best = rootMoves[0].i;
+  for (i = 0; i < rootMoves.length; i++) {
+    idx = rootMoves[i].i;
+    putStone(idx, aiColor);
+    var v = negamax(opp, 3, alpha, Infinity, aiColor);
+    takeStone(idx);
+    if (v > alpha) { alpha = v; best = idx; }
+    if (TIMEOUT) break;
+  }
+  DBG.branch = 'search(depth3)';
+  return best;
+}
+
+/* --- 简单：会犯错但绝不故意送死 --- */
+function easyMove(bd, aiColor, opp, rng, moves) {
+  var i;
+  /* 对方能造活四（活三）时，简单档也必须有 70% 概率去堵，否则太容易被秒杀 */
+  var urgent = [];
+  for (i = 0; i < moves.length; i++) if (moves[i].def >= V_OPEN4) urgent.push(moves[i].i);
+  if (urgent.length && rng() < 0.7) return urgent[Math.floor(rng() * urgent.length) % urgent.length];
+
+  /* 自己能成四就成四（但可能漏掉更强的活三） */
+  var fours = [];
+  for (i = 0; i < moves.length; i++) {
+    if (moves[i].atk >= V_FOUR && moves[i].atk < V_WIN) fours.push(moves[i].i);
+  }
+  if (fours.length && rng() < 0.85) return fours[Math.floor(rng() * fours.length) % fours.length];
+
+  /* 对方冲四的堵点也要有一定概率照顾到 */
+  var fourBlocks = [];
+  for (i = 0; i < moves.length; i++) {
+    if (moves[i].def >= V_FOUR && moves[i].atk < V_FOUR) fourBlocks.push(moves[i].i);
+  }
+  if (fourBlocks.length && rng() < 0.6) {
+    return fourBlocks[Math.floor(rng() * fourBlocks.length) % fourBlocks.length];
+  }
+
+  /* 否则在前 45% 的候选里随机挑（会走软着） */
+  var top = Math.max(1, Math.ceil(moves.length * 0.45));
+  var k = Math.floor(rng() * top) % top;
+  return moves[k].i;
+}
+
+/* --- 普通：一层战术 + 贪心 --- */
+function normalMove(bd, aiColor, opp, rng, moves) {
+  var i;
+  /* 自己能成四 / 活四 -> 走 */
+  for (i = 0; i < moves.length; i++) if (moves[i].atk >= V_FOUR) return moves[i].i;
+
+  /* 对方能造活四（活三堵点）-> 必须堵，否则下一手必输 */
+  var best = -1, bs = -Infinity;
+  for (i = 0; i < moves.length; i++) {
+    if (moves[i].def >= V_OPEN4) {
+      var s0 = moves[i].def + moves[i].atk * 0.5;
+      if (s0 > bs) { bs = s0; best = moves[i].i; }
+    }
+  }
+  if (best >= 0) return best;
+
+  /* 综合进攻与防守打分（防守权重略高于进攻，避免只顾进攻） */
+  bs = -Infinity;
+  for (i = 0; i < moves.length; i++) {
+    var m = moves[i];
+    var def = m.def === V_WIN ? 900000 : m.def;
+    var s = m.atk * 1.0 + def * 1.1 + i * 3 + (rng() - 0.5) * 25;
+    if (s > bs) { bs = s; best = m.i; }
+  }
+  return best >= 0 ? best : moves[0].i;
+}
+
+/* =========================================================================
+   9. 渲染
+   ========================================================================= */
+var canvas = document.getElementById('board');
+var ctx = canvas.getContext('2d');
+var dpr = 1;
+
+function layout() {
+  var inner = canvas.parentElement;
+  var w = Math.max(240, Math.round(inner.clientWidth || 320));
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(w * dpr);
+  canvas.style.width = w + 'px';
+  canvas.style.height = w + 'px';
+}
+function cellPx() { return canvas.width / (N - 1 + 2 * PAD); }
+function px(i, p) { return (i + PAD) * p; }
+
+var G = {
+  board: new Int8Array(N * N),
+  history: [],
+  turn: BLACK,
+  mode: 'ai',
+  diff: 'hard',
+  over: false,
+  winner: 0,
+  winCells: null,
+  anims: [],
+  lastIdx: -1,
+  aiColor: WHITE,
+  thinking: false,
+  ms: 0
+};
+
+function draw() {
+  var W = canvas.width, p = cellPx(), i;
+  ctx.clearRect(0, 0, W, W);
+
+  var outer = ctx.createLinearGradient(0, 0, W, W);
+  outer.addColorStop(0, '#1b2547');
+  outer.addColorStop(1, '#111a34');
+  roundRect(ctx, 0, 0, W, W, W * 0.018);
+  ctx.fillStyle = outer; ctx.fill();
+
+  var pad = Math.round(5 * dpr);
+  var bg = ctx.createLinearGradient(pad, pad, W - pad, W - pad);
+  bg.addColorStop(0, '#212a4d');
+  bg.addColorStop(1, '#1a2140');
+  roundRect(ctx, pad, pad, W - 2 * pad, W - 2 * pad, W * 0.014);
+  ctx.fillStyle = bg; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.07)';
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.stroke();
+
+  /* 网格 */
+  ctx.strokeStyle = 'rgba(190,205,245,.30)';
+  ctx.lineWidth = Math.max(1, Math.round(1.15 * dpr));
+  ctx.beginPath();
+  for (i = 0; i < N; i++) {
+    var q = px(i, p);
+    ctx.moveTo(px(0, p), q); ctx.lineTo(px(N - 1, p), q);
+    ctx.moveTo(q, px(0, p)); ctx.lineTo(q, px(N - 1, p));
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(190,205,245,.5)';
+  ctx.lineWidth = Math.max(1.4, Math.round(1.7 * dpr));
+  ctx.strokeRect(px(0, p), px(0, p), p * (N - 1), p * (N - 1));
+
+  /* 星位 */
+  var stars = [[7, 7], [3, 3], [3, 11], [11, 3], [11, 11]];
+  ctx.fillStyle = 'rgba(205,218,255,.8)';
+  for (i = 0; i < stars.length; i++) {
+    ctx.beginPath();
+    ctx.arc(px(stars[i][1], p), px(stars[i][0], p), Math.max(1.8, p * 0.085), 0, 6.2832);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(205,218,255,.34)';
+  var stars2 = [[5, 5], [5, 9], [9, 5], [9, 9]];
+  for (i = 0; i < stars2.length; i++) {
+    ctx.beginPath();
+    ctx.arc(px(stars2[i][1], p), px(stars2[i][0], p), Math.max(1.2, p * 0.05), 0, 6.2832);
+    ctx.fill();
+  }
+
+  var now = performance.now();
+  for (i = G.anims.length - 1; i >= 0; i--) {
+    var a = G.anims[i];
+    a.t = (now - a.t0) / 180;
+    if (a.t >= 1) G.anims.splice(i, 1);
+  }
+
+  /* 棋子：最后一手最后画 */
+  var used = [];
+  for (i = 0; i < N * N; i++) if (G.board[i] !== 0) used.push(i);
+  if (G.lastIdx >= 0) {
+    var z = used.indexOf(G.lastIdx);
+    if (z >= 0) { used.splice(z, 1); used.push(G.lastIdx); }
+  }
+  for (i = 0; i < used.length; i++) drawStone(used[i], p);
+
+  /* 最后一手标记 */
+  if (G.lastIdx >= 0 && G.board[G.lastIdx] !== 0) {
+    drawLastMark((G.lastIdx / N) | 0, G.lastIdx % N, p);
+  }
+
+  /* 胜利连线 */
+  if (G.winCells) {
+    var pulse = 0.5 + 0.5 * Math.sin(now / 300);
+    var f = G.winCells[0], l = G.winCells[G.winCells.length - 1];
+    ctx.save();
+    ctx.strokeStyle = 'rgba(61,220,151,' + (0.6 + 0.35 * pulse).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(3, p * 0.2);
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(61,220,151,.7)';
+    ctx.shadowBlur = p * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(px(f % N, p), px((f / N) | 0, p));
+    ctx.lineTo(px(l % N, p), px((l / N) | 0, p));
+    ctx.stroke();
+    ctx.restore();
+    for (i = 0; i < G.winCells.length; i++) {
+      var wi = G.winCells[i];
+      ctx.beginPath();
+      ctx.arc(px(wi % N, p), px((wi / N) | 0, p), p * 0.47, 0, 6.2832);
+      ctx.strokeStyle = 'rgba(61,220,151,' + (0.85 + 0.15 * pulse).toFixed(3) + ')';
+      ctx.lineWidth = Math.max(2, p * 0.07);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawStone(idx, p) {
+  var r = (idx / N) | 0, c = idx % N;
+  var x = px(c, p), y = px(r, p), radius = p * 0.42;
+  for (var i = 0; i < G.anims.length; i++) {
+    if (G.anims[i].idx === idx) {
+      var t = Math.min(1, G.anims[i].t);
+      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      radius *= 0.5 + 0.5 * e;
+      break;
+    }
+  }
+  var black = G.board[idx] === BLACK;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.55)';
+  ctx.shadowBlur = p * 0.15;
+  ctx.shadowOffsetY = p * 0.045;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 6.2832);
+  var g = ctx.createRadialGradient(x - radius * 0.34, y - radius * 0.4, radius * 0.08, x, y, radius);
+  if (black) {
+    g.addColorStop(0, '#586280'); g.addColorStop(0.5, '#191e30'); g.addColorStop(1, '#05070d');
+  } else {
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.68, '#e9eefc'); g.addColorStop(1, '#bcc5e0');
+  }
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.ellipse(x - radius * 0.3, y - radius * 0.34, radius * 0.3, radius * 0.19, -0.6, 0, 6.2832);
+  ctx.fillStyle = black ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.8)';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 6.2832);
+  ctx.strokeStyle = black ? 'rgba(255,255,255,.10)' : 'rgba(80,96,150,.35)';
+  ctx.lineWidth = Math.max(1, p * 0.018);
+  ctx.stroke();
+}
+
+function drawLastMark(r, c, p) {
+  var x = px(c, p), y = px(r, p), s = p * 0.16;
+  ctx.save();
+  ctx.strokeStyle = LAST_HL;
+  ctx.lineWidth = Math.max(1.6, p * 0.055);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - s, y - s - s * 0.55); ctx.lineTo(x - s, y - s); ctx.lineTo(x - s - s * 0.55, y - s);
+  ctx.moveTo(x + s, y - s - s * 0.55); ctx.lineTo(x + s, y - s); ctx.lineTo(x + s + s * 0.55, y - s);
+  ctx.moveTo(x - s, y + s + s * 0.55); ctx.lineTo(x - s, y + s); ctx.lineTo(x - s - s * 0.55, y + s);
+  ctx.moveTo(x + s, y + s + s * 0.55); ctx.lineTo(x + s, y + s); ctx.lineTo(x + s + s * 0.55, y + s);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+  c.closePath();
+}
+
+/* ---------- 动画循环 ---------- */
+var rafId = 0;
+function tick() {
+  draw();
+  if (G.anims.length || G.winCells) rafId = requestAnimationFrame(tick);
+  else rafId = 0;
+}
+function kick() {
+  if (!rafId) rafId = requestAnimationFrame(tick);
+}
+
+/* =========================================================================
+   10. 游戏流程
+   ========================================================================= */
+function myTurn() {
+  if (G.over || G.thinking) return false;
+  if (G.mode === 'pvp') return true;
+  return G.turn !== G.aiColor;
+}
+
+function playMove(idx, color) {
+  if (idx < 0 || idx >= N * N) return false;
+  if (G.board[idx] !== 0) return false;      // 不能下在已有棋子上
+  G.board[idx] = color;
+  G.history.push({ idx: idx, color: color });
+  G.lastIdx = idx;
+  G.anims.push({ idx: idx, t0: performance.now(), t: 0 });
+  if (checkWin(G.board, idx)) {
+    G.over = true; G.winner = color;
+    G.winCells = findWinLine(G.board, idx);
+    G.thinking = false;
+  } else if (G.history.length >= N * N) {
+    G.over = true; G.winner = 3;
+  } else {
+    G.turn = OPP[color];
+  }
+  updateUI();
+  draw();
+  kick();
+  return true;
+}
+
+function scheduleAI() {
+  if (G.over || G.mode !== 'ai' || G.turn !== G.aiColor) return;
+  G.thinking = true;
+  updateUI();
+  setTimeout(function () {
+    if (G.over || G.mode !== 'ai' || G.turn !== G.aiColor) { G.thinking = false; updateUI(); return; }
+    var t0 = performance.now();
+    var mv;
+    try {
+      mv = aiChooseMove(G.board, G.aiColor, G.diff, Math.random);
+    } catch (e) {
+      mv = -1;
+    }
+    G.ms = Math.round(performance.now() - t0);
+    /* 兜底：任何情况下都必须返回一个合法空点 */
+    if (!(mv >= 0 && mv < N * N) || G.board[mv] !== 0) {
+      for (var i = 0; i < N * N; i++) if (G.board[i] === 0) { mv = i; break; }
+    }
+    G.thinking = false;
+    if (mv >= 0) playMove(mv, G.aiColor);
+    else { G.over = true; G.winner = 3; updateUI(); }
+  }, 60);
+}
+
+function undo() {
+  if (G.thinking) return;
+  if (!G.history.length) return;
+  var n = (G.mode === 'ai') ? Math.min(2, G.history.length) : 1;
+  for (var i = 0; i < n; i++) popOne();
+  /* 人机模式必须回到玩家回合 */
+  if (G.mode === 'ai') {
+    var guard = 0;
+    while (G.history.length && G.turn === G.aiColor && guard++ < 4) popOne();
+  }
+  G.over = false; G.winner = 0; G.winCells = null;
+  G.anims.length = 0;
+  updateUI(); draw(); kick();
+}
+
+function popOne() {
+  var h = G.history.pop();
+  if (!h) return;
+  G.board[h.idx] = 0;
+  G.turn = h.color;
+  G.lastIdx = G.history.length ? G.history[G.history.length - 1].idx : -1;
+}
+
+function restart() {
+  G.board = new Int8Array(N * N);
+  G.history.length = 0;
+  G.turn = BLACK;
+  G.over = false; G.winner = 0; G.winCells = null;
+  G.anims.length = 0; G.lastIdx = -1;
+  G.thinking = false; G.ms = 0;
+  updateUI(); draw(); kick();
+}
+
+/* =========================================================================
+   11. 交互
+   ========================================================================= */
+function hitTest(clientX, clientY) {
+  var rect = canvas.getBoundingClientRect();
+  if (!rect.width) return -1;
+  var p = rect.width / (N - 1 + 2 * PAD);
+  var x = clientX - rect.left, y = clientY - rect.top;
+  var c = Math.round(x / p - PAD), r = Math.round(y / p - PAD);
+  if (r < 0 || r >= N || c < 0 || c >= N) return -1;
+  var dx = x - (c + PAD) * p, dy = y - (r + PAD) * p;
+  if (dx * dx + dy * dy > (p * 0.52) * (p * 0.52)) return -1;
+  return r * N + c;
+}
+
+function cellToClient(idx) {
+  var rect = canvas.getBoundingClientRect();
+  var p = rect.width / (N - 1 + 2 * PAD);
+  return {
+    x: rect.left + ((idx % N) + PAD) * p,
+    y: rect.top + (((idx / N) | 0) + PAD) * p
+  };
+}
+
+function onPointer(e) {
+  if (!myTurn()) return;
+  var idx = hitTest(e.clientX, e.clientY);
+  if (idx < 0) return;
+  if (G.board[idx] !== 0) return;
+  if (e.cancelable) e.preventDefault();
+  playMove(idx, G.turn);
+  if (!G.over && G.mode === 'ai' && G.turn === G.aiColor) scheduleAI();
+}
+
+function updateUI() {
+  var dot = document.getElementById('stDot');
+  var txt = document.getElementById('stText');
+  var info = document.getElementById('stInfo');
+  var undoBtn = document.getElementById('btnUndo');
+  var think = document.getElementById('thinking');
+  var modeName = G.mode === 'ai'
+    ? ('人机 · ' + ({ easy: '简单', normal: '普通', hard: '困难' }[G.diff]))
+    : '双人同屏';
+
+  document.getElementById('moveCount').textContent = String(G.history.length);
+  txt.className = '';
+  dot.className = 'dot' + (G.turn === WHITE ? ' w' : '');
+
+  if (G.over) {
+    if (G.winner === 3) {
+      txt.textContent = '平局 —— 棋盘已满';
+      txt.className = 'draw'; dot.className = 'dot';
+    } else if (G.mode === 'ai') {
+      if (G.winner === G.aiColor) { txt.textContent = 'AI 胜 —— 再来一局？'; txt.className = 'lose'; }
+      else { txt.textContent = '你赢了！'; txt.className = 'win'; }
+      dot.className = 'dot' + (G.winner === WHITE ? ' w' : '');
+    } else {
+      txt.textContent = (G.winner === BLACK ? '黑方' : '白方') + '胜！';
+      txt.className = 'win';
+      dot.className = 'dot' + (G.winner === WHITE ? ' w' : '');
+    }
+    canvas.classList.add('locked');
+  } else {
+    canvas.classList.remove('locked');
+    if (G.thinking) {
+      txt.textContent = 'AI 思考中…';
+      dot.className = 'dot' + (G.turn === WHITE ? ' w' : '') + ' pulse';
+    } else if (G.mode === 'ai') {
+      if (G.turn === G.aiColor) {
+        txt.textContent = 'AI 走棋';
+        dot.className = 'dot' + (G.turn === WHITE ? ' w' : '') + ' pulse';
+      } else {
+        txt.textContent = '轮到你落子（执' + (G.turn === BLACK ? '黑' : '白') + '）';
+        dot.className = 'dot' + (G.turn === WHITE ? ' w' : '') + ' pulse';
+      }
+    } else {
+      txt.textContent = (G.turn === BLACK ? '黑方' : '白方') + '落子';
+      dot.className = 'dot' + (G.turn === WHITE ? ' w' : '') + ' pulse';
+    }
+  }
+  if (G.thinking) think.classList.add('show'); else think.classList.remove('show');
+  info.textContent = modeName + (G.ms ? ' · ' + G.ms + 'ms' : '');
+  undoBtn.disabled = G.history.length === 0 || G.thinking;
+}
+
+function setSeg(seg, attr, val) {
+  var b = seg.querySelectorAll('button');
+  for (var i = 0; i < b.length; i++) b[i].classList.toggle('on', b[i].getAttribute(attr) === val);
+}
+function syncDiffEnabled() {
+  var dbs = document.getElementById('segDiff').querySelectorAll('button');
+  for (var i = 0; i < dbs.length; i++) dbs[i].disabled = (G.mode !== 'ai');
+  document.getElementById('segDiff').style.opacity = G.mode === 'ai' ? '1' : '.55';
+}
+
+function init() {
+  layout();
+  buildShapes();
+  syncDiffEnabled();
+
+  var segMode = document.getElementById('segMode');
+  var segDiff = document.getElementById('segDiff');
+  segMode.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var m = b.getAttribute('data-mode');
+    if (m === G.mode) return;
+    G.mode = m; setSeg(segMode, 'data-mode', m); syncDiffEnabled(); restart();
+  });
+  segDiff.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b || b.disabled) return;
+    var d = b.getAttribute('data-diff');
+    if (d === G.diff) return;
+    G.diff = d; setSeg(segDiff, 'data-diff', d); updateUI();
+  });
+  document.getElementById('btnUndo').addEventListener('click', undo);
+  document.getElementById('btnRestart').addEventListener('click', restart);
+  canvas.addEventListener('pointerdown', onPointer, { passive: false });
+  window.addEventListener('resize', function () { layout(); draw(); });
+  window.addEventListener('orientationchange', function () {
+    setTimeout(function () { layout(); draw(); }, 150);
+  });
+  restart();
+}
+
+/* =========================================================================
+   12. 启动
+   ========================================================================= */
+buildLines();
+ensureCellLines();
+buildNeighbors();
+initSearch();
+init();
+
+/* =========================================================================
+   13. 自动化测试钩子
+   ========================================================================= */
+window.GobangAPI = {
+  N: N, BLACK: BLACK, WHITE: WHITE, EMPTY: EMPTY, V: {
+    WIN: V_WIN, OPEN4: V_OPEN4, FOUR: V_FOUR, OPEN3: V_OPEN3, SLEEP3: V_SLEEP3,
+    OPEN2: V_OPEN2, SLEEP2: V_SLEEP2
+  },
+  G: G,
+  state: function () {
+    return {
+      turn: G.turn, over: G.over, winner: G.winner, mode: G.mode, diff: G.diff,
+      historyLen: G.history.length, lastIdx: G.lastIdx, thinking: G.thinking, ms: G.ms,
+      board: Array.prototype.slice.call(G.board), winCells: G.winCells
+    };
+  },
+  playMove: playMove,
+  undo: undo,
+  restart: restart,
+  checkWin: checkWin,
+  findWinLine: findWinLine,
+  pointScore: pointScore,
+  aiChooseMove: function (arr, color, level) {
+    var bd = new Int8Array(N * N);
+    for (var i = 0; i < N * N; i++) bd[i] = arr[i] || 0;
+    prepareSearch(bd);
+    DBG.branch = '';
+    DBG.candCount = frontier.length;
+    DBG.movesCount = 0;
+    var mv = aiChooseMove(bd, color, level || 'hard', Math.random);
+    /* 暴露搜索诊断信息，便于测试与调优 */
+    this.lastNodes = NODES;
+    this.lastBranch = DBG.branch;
+    this.lastCand = DBG.candCount;
+    this.lastMoves = DBG.movesCount;
+    return mv;
+  },
+  lastNodes: 0,
+  lastBranch: '',
+  lastCand: 0,
+  lastMoves: 0,
+  setMode: function (m) {
+    G.mode = m;
+    setSeg(document.getElementById('segMode'), 'data-mode', m);
+    syncDiffEnabled();
+  },
+  setDiff: function (d) {
+    G.diff = d;
+    setSeg(document.getElementById('segDiff'), 'data-diff', d);
+  },
+  setBoard: function (arr) {
+    restart();
+    var i, n = 0;
+    for (i = 0; i < N * N; i++) if (arr[i]) { G.board[i] = arr[i]; G.history.push({ idx: i, color: arr[i] }); n++; }
+    G.lastIdx = n ? G.history[n - 1].idx : -1;
+    G.turn = (n % 2 === 0) ? BLACK : WHITE;
+    for (i = 0; i < N * N; i++) {
+      if (G.board[i] && checkWin(G.board, i)) {
+        G.over = true; G.winner = G.board[i]; G.winCells = findWinLine(G.board, i); break;
+      }
+    }
+    updateUI(); draw();
+    return n;
+  },
+  hitTest: hitTest,
+  cellToClient: cellToClient,
+  layout: layout,
+  draw: draw,
+  canvasRect: function () { return canvas.getBoundingClientRect(); },
+  _classify: classify
+};
+
+})();
+</script>
+</body>
+</html>
