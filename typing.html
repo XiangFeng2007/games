@@ -1396,16 +1396,18 @@ const Practice = {
     $('#btnNewText').addEventListener('click', () => { this.newText(); Input.sync(); });
     $('#btnRestartText').addEventListener('click', () => { this.restart(); Input.sync(); });
     this.set = $('#textSet').value;
-    this.newText();
+    this.newText(true);          // 首次初始化，保留已有进度存档
   },
 
   /** 中文分类：用输入法打字，速度按「字/分钟」计 */
   isZh() { return ZH_SETS.has(this.set); },
 
-  newText() {
+  newText(firstRun) {
     const pool = TEXT_SETS[this.set] || TEXT_SETS.words;
     this.text = pick(pool);
-    this.restart();
+    /* 首次初始化（firstRun）保留已有进度，让「继续上次练习」能读到；
+       用户主动换文本才清档。 */
+    this.restart(!!firstRun);
   },
 
   /** 保存练习进度（下次打开可继续这一段） */
@@ -1454,10 +1456,12 @@ const Practice = {
     this.refreshStats();
   },
 
-  restart() {
+  restart(keepProgress) {
     this.idx = 0; this.correct = 0; this.wrong = 0; this.totalKeys = 0;
     this.startTime = 0; this.finished = false; this.wpm = 0; this.acc = 100;
-    this.clearProgress();
+    /* keepProgress 为真时不清档 —— 页面初始化会调用 newText()，
+       如果无条件清档，刷新后就永远看不到「继续上次练习」了。 */
+    if (!keepProgress) this.clearProgress();
     this.render();
     updateHud();
   },
@@ -1950,6 +1954,9 @@ function boot() {
   Input.sync();
   renderHomeBest();
   showScreenHomeInit();
+
+  /* 检查是否有未完成的跟打进度，有则提示继续 */
+  setTimeout(checkTypingProgress, 300);
 
   // 窗口尺寸变化时，保证下落目标仍在场地内
   window.addEventListener('resize', () => {

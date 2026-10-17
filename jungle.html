@@ -2749,9 +2749,13 @@ var Save = (function () {
     $('#btnUndo').addEventListener('click', undo);
     $('#btnRules').addEventListener('click', showRules);
     $('#btnSound').addEventListener('click', function () {
-      config.soundOn = !config.soundOn;
-      this.textContent = config.soundOn ? '🔊 音效' : '🔇 静音';
-      toast(config.soundOn ? '音效已开启' : '音效已关闭');
+      /* 统一走 FX 的开关，这样状态会存进 localStorage 并和其它游戏一致 */
+      var next = !FX.on();
+      FX.setEnabled(next);
+      config.soundOn = next;
+      this.textContent = next ? '🔊 音效' : '🔇 静音';
+      toast(next ? '音效已开启' : '音效已关闭');
+      if (next) FX.click();
     });
 
     // 关弹窗
@@ -2818,8 +2822,13 @@ var Save = (function () {
   // ------------------------------------------------------------ 启动
   bind();
 
-  /* 音效初始化（读取上次开关状态） */
+  /* 音效初始化（读取上次开关状态），并让按钮与 FX 状态同步 */
   FX.init();
+  config.soundOn = FX.on();
+  (function () {
+    var sb = $('#btnSound');
+    if (sb) sb.textContent = FX.on() ? '🔊 音效' : '🔇 静音';
+  })();
 
   /* 有未完成对局则提示继续；否则开新局 */
   var __saved = readSave();

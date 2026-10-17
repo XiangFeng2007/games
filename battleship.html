@@ -1253,6 +1253,7 @@ function saveGame(){
   });
 }
 function restoreGame(s){
+  if (!s) { newGame(); return; }     // 存档为空时安全兜底
   state.phase = s.phase || 'place';
   state.difficulty = s.difficulty || 'normal';
   state.turn = s.turn || 'you';
@@ -1479,7 +1480,10 @@ function newGame(){
   state.combo = 0;
   logEl.innerHTML = '';
   log('新的一局。请布阵，或直接点「随机布阵」。', 'good');
-  Save.clear('battleship');
+  /* 注意：这里不能无条件清档。
+     newGame() 在页面初始化时也会被调用，若清档，刷新后就永远
+     看不到「继续上局」了（实测发现的真 bug）。
+     清档只由用户主动操作触发（resumeNo / ovAgain / 对局结束）。 */
   FX.click();
   render();
 }
@@ -1529,7 +1533,10 @@ function bindEvents(){
   $('btnRotate').addEventListener('click', doRotate);
   $('btnRandom').addEventListener('click', doRandom);
   $('btnReset').addEventListener('click', doReset);
-  $('ovAgain').addEventListener('click', newGame);
+  $('ovAgain').addEventListener('click', function () {
+    Save.clear('battleship');       // 用户主动开新局，清档
+    newGame();
+  });
 
   /* ---- 教程 ---- */
   $('btnTut').addEventListener('click', tutShow);
