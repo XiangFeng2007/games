@@ -607,6 +607,7 @@ var Save = (function () {
     buildBoard();
     render();
     updateStatus();
+    syncDiffButtons();          // 难度按钮高亮跟着切换
     Save.clear('sudoku');
     FX.click();
   }

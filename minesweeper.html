@@ -475,6 +475,7 @@ var Save = (function () {
     buildBoard();
     render();
     updateStatus();
+    syncDiffButtons();          // 难度按钮高亮跟着切换
     Save.clear('minesweeper');
     setFace('🙂');
     FX.click();
@@ -529,15 +530,23 @@ var Save = (function () {
     fitCellSize();
   }
 
-  /** 根据可用宽度自动调整格子大小，保证手机上不横向溢出 */
+  /** 根据可用宽度自动调整格子大小，保证任何难度在手机上都不横向溢出。
+      注意：不能用固定的最小格子尺寸（曾经把 min 设成 16px，
+      导致 30 列的困难模式在手机上撑出 583px、横向溢出）。
+      这里改为「按可用宽度反算」，小屏时格子会变小但仍可点。 */
   function fitCellSize() {
     if (!boardEl) return;
-    var wrapW = document.getElementById('app').clientWidth - 28;   // 减去内边距
-    var gap = 3, pad = 16;
-    var maxCell = 38, minCell = 16;
+    var appEl = document.getElementById('app');
+    var wrapW = (appEl ? appEl.clientWidth : window.innerWidth) - 24;   // 减去内边距
+    var gap = S.cols >= 20 ? 2 : 3;      // 列多时缝隙也收窄
+    var pad = 16;
+    var maxCell = 38, minCell = 12;
+
     var cs = Math.floor((wrapW - pad - gap * (S.cols - 1)) / S.cols);
     cs = Math.max(minCell, Math.min(maxCell, cs));
     boardEl.style.setProperty('--cs', cs + 'px');
+    boardEl.style.gap = gap + 'px';
+    boardEl.style.gridTemplateColumns = 'repeat(' + S.cols + ', ' + cs + 'px)';
   }
 
   function cellEl(r, c) {

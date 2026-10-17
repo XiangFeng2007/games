@@ -84,8 +84,104 @@ header{text-align:center;margin-bottom:34px}
 .card.soon::after{display:none}
 .card.soon .icon{filter:grayscale(1)}
 
+/* ---------- 关于本站 ---------- */
+.about{
+  margin-top:38px;padding:24px;
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025));
+  border:1px solid var(--panel-line);
+  position:relative;overflow:hidden
+}
+.about::before{
+  content:"";position:absolute;top:-60%;right:-15%;
+  width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(110,168,255,.18),transparent 70%);
+  pointer-events:none
+}
+.about h2{
+  margin:0 0 12px;font-size:17px;font-weight:800;
+  display:flex;align-items:center;gap:8px;position:relative
+}
+.about h2 .ic{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2))
+}
+.about p{
+  margin:0 0 10px;color:#c3ccea;font-size:13.5px;line-height:1.85;position:relative
+}
+.about ul{
+  margin:8px 0 0;padding-left:20px;color:#b9c4e6;font-size:13px;line-height:2;position:relative
+}
+.about li b{color:#fff}
+.about .divider{
+  height:1px;margin:18px 0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent)
+}
+.about h3{
+  margin:0 0 10px;font-size:14.5px;font-weight:700;color:#fff;
+  display:flex;align-items:center;gap:7px;position:relative
+}
+/* 联系方式 */
+.contacts{display:flex;flex-direction:column;gap:9px;position:relative}
+.contact{
+  display:flex;align-items:center;gap:11px;
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;padding:11px 14px;
+  text-decoration:none;color:inherit;
+  transition:background .16s,border-color .16s,transform .16s;
+  cursor:pointer;border-left:3px solid var(--cc,#6ea8ff)
+}
+.contact:hover{
+  background:rgba(255,255,255,.1);
+  border-color:rgba(255,255,255,.2);
+  transform:translateX(3px)
+}
+.contact:active{transform:translateX(1px) scale(.995)}
+.contact .ci{
+  width:34px;height:34px;border-radius:9px;flex:0 0 auto;
+  display:grid;place-items:center;font-size:17px;
+  background:var(--cc-bg,rgba(110,168,255,.16))
+}
+.contact .ct{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;gap:1px;text-align:left
+}
+.contact .cl{font-size:11px;color:var(--muted);line-height:1.35;display:block}
+.contact .cv{
+  font-size:14px;font-weight:700;color:#fff;line-height:1.45;
+  font-variant-numeric:tabular-nums;word-break:break-all;display:block
+}
+.contact .cc-btn{
+  flex:0 0 auto;font-size:11px;font-weight:600;
+  padding:4px 10px;border-radius:7px;
+  background:rgba(255,255,255,.1);color:var(--muted);
+  border:1px solid rgba(255,255,255,.1);white-space:nowrap
+}
+.contact:hover .cc-btn{background:rgba(255,255,255,.16);color:#fff}
+.contact .cc-btn.copied{background:var(--ok);color:#062018;border-color:transparent}
+
+/* 复制提示 toast */
+#copyTip{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+  background:rgba(20,26,52,.97);border:1px solid rgba(255,255,255,.2);
+  color:#fff;padding:9px 18px;border-radius:11px;font-size:13px;
+  box-shadow:0 12px 30px rgba(0,0,0,.55);
+  opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:200
+}
+#copyTip.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 求推荐游戏的小提示 */
+.ask{
+  margin-top:16px;padding:14px 16px;border-radius:12px;
+  background:linear-gradient(135deg,rgba(110,168,255,.13),rgba(160,107,255,.13));
+  border:1px dashed rgba(110,168,255,.4);
+  font-size:13px;line-height:1.8;color:#cfe0ff;position:relative
+}
+.ask b{color:#fff}
+
 /* ---------- 页脚 ---------- */
-footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12.5px;line-height:2}
+footer{margin-top:28px;text-align:center;color:var(--muted);font-size:12.5px;line-height:2}
 footer b{color:var(--text)}
 footer .dot{opacity:.45;margin:0 8px}
 
@@ -98,8 +194,15 @@ footer .dot{opacity:.45;margin:0 8px}
   .card{padding:16px;border-radius:15px}
   .icon{width:44px;height:44px;font-size:22px;border-radius:12px}
   .card h2{font-size:16px}
+  .about{padding:18px 16px;border-radius:15px;margin-top:26px}
+  .about h2{font-size:15.5px}
+  .about p,.about ul{font-size:12.5px}
+  .contact{padding:10px 12px;gap:9px}
+  .contact .ci{width:30px;height:30px;font-size:15px}
+  .contact .cv{font-size:13px}
+  .contact .cc-btn{font-size:10px;padding:3px 8px}
 }
-@media (prefers-reduced-motion:reduce){.card{transition:none}}
+@media (prefers-reduced-motion:reduce){.card{transition:none}.contact{transition:none}}
 </style>
 </head>
 <body>
@@ -112,6 +215,59 @@ footer .dot{opacity:.45;margin:0 8px}
     </p>
   </header>
   <main id="grid"></main>
+
+  <!-- ============ 关于本站 ============ -->
+  <section class="about">
+    <h2><span class="ic">✨</span>关于这个小站</h2>
+    <p>
+      这里是我做的一个<b>纯静态的小游戏合集</b>，收录了一些经典又耐玩的小游戏 ——
+      有练手速的打字游戏、斗兽棋/五子棋这类棋类对战，也有扫雷、数独、2048、俄罗斯方块这些单机解谜和街机小玩意。
+    </p>
+    <ul>
+      <li><b>完全离线</b>：所有游戏都是单文件，没有任何外部依赖，断网也能玩</li>
+      <li><b>免安装</b>：打开网页就能玩，不用下载客户端</li>
+      <li><b>手机 / 平板 / 电脑</b> 都能用，界面会自动适配屏幕</li>
+      <li><b>成绩存在本地</b>：不联网、不上传，放心玩</li>
+      <li>每个游戏都做了<b>音效和衔接动画</b>，没打完的对局<b>下次还能继续</b></li>
+    </ul>
+
+    <div class="divider"></div>
+
+    <h3>📮 联系我</h3>
+    <div class="contacts">
+      <div class="contact" data-copy="1161502933" style="--cc:#12b7f5;--cc-bg:rgba(18,183,245,.16)">
+        <span class="ci">💬</span>
+        <span class="ct">
+          <span class="cl">QQ</span>
+          <span class="cv">1161502933</span>
+        </span>
+        <span class="cc-btn">复制</span>
+      </div>
+      <div class="contact" data-copy="XiangFeng_2007" style="--cc:#07c160;--cc-bg:rgba(7,193,96,.16)">
+        <span class="ci">💚</span>
+        <span class="ct">
+          <span class="cl">微信</span>
+          <span class="cv">XiangFeng_2007</span>
+        </span>
+        <span class="cc-btn">复制</span>
+      </div>
+      <div class="contact" data-copy="曾向着风" data-search="bilibili"
+           style="--cc:#fb7299;--cc-bg:rgba(251,114,153,.16)">
+        <span class="ci">📺</span>
+        <span class="ct">
+          <span class="cl">哔哩哔哩</span>
+          <span class="cv">曾向着风</span>
+        </span>
+        <span class="cc-btn">复制</span>
+      </div>
+    </div>
+
+    <div class="ask">
+      🎯 <b>想要新的游戏？</b> 通过上面的方式联系我，告诉我你想要什么游戏、希望有什么功能，
+      我会考虑加进来。也欢迎反馈 bug 或者提改进建议。
+    </div>
+  </section>
+
   <footer id="foot"></footer>
 </div>
 
@@ -182,6 +338,129 @@ function esc(s) {
 }
 
 renderGames();
+
+/* =========================================================
+   联系方式：点击复制
+   ========================================================= */
+(function () {
+  var tipTimer = null;
+
+  function toast(msg) {
+    var t = document.getElementById('copyTip');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'copyTip';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    // 强制重排，保证连续点击时动画能重播
+    void t.offsetWidth;
+    t.classList.add('show');
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(function () { t.classList.remove('show'); }, 1500);
+  }
+
+  /* 复制策略（兼顾兼容性与即时反馈）：
+     1. 先用 execCommand 同步复制 —— 兼容性最好，且能立刻知道成功与否
+     2. 若失败，再异步尝试 Clipboard API（部分环境下反倒可用）
+     3. 两者都失败，就把号码选中，提示用户手动复制
+     不用 Clipboard API 做主路径的原因：它在无头浏览器、未聚焦窗口、
+     部分手机 WebView 里 Promise 会一直 pending，点了完全没反应。 */
+  function legacyCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;' +
+                         'padding:0;border:0;outline:0;opacity:0;z-index:-1;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /* 手动选中，方便用户长按 / Ctrl+C */
+  function selectNode(node) {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(node);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  document.querySelectorAll('.contact[data-copy]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      var text = el.dataset.copy;
+      var btn = el.querySelector('.cc-btn');
+      var oldText = btn.textContent;
+
+      function markDone() {
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        toast('已复制：' + text);
+        setTimeout(function () {
+          btn.textContent = oldText;
+          btn.classList.remove('copied');
+        }, 1600);
+      }
+      function markManual() {
+        btn.textContent = '请手动复制';
+        toast('已选中，请 Ctrl+C 或长按复制：' + text);
+        selectNode(el.querySelector('.cv'));
+        setTimeout(function () { btn.textContent = oldText; }, 2200);
+      }
+
+      // 1) 同步路径：成功就立刻反馈
+      if (legacyCopy(text)) { markDone(); return; }
+
+      // 2) 同步失败 —— 先立刻给一个中性反馈，避免用户觉得没反应，
+      //    再异步尝试 Clipboard API，成功则改写为「已复制」。
+      var settled = false;
+      btn.textContent = '复制中…';
+      selectNode(el.querySelector('.cv'));     // 同时选中，随时可手动复制
+      toast('正在复制…（若失败请 Ctrl+C 或长按复制）');
+
+      function finish(okCopy) {
+        if (settled) return;
+        settled = true;
+        if (okCopy) {
+          markDone();
+        } else {
+          btn.textContent = '请手动复制';
+          toast('已选中，请 Ctrl+C 或长按复制：' + text);
+          setTimeout(function () { btn.textContent = oldText; }, 1400);
+        }
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        // 兜底超时：即使 Promise 一直挂着，也要在 500ms 内给出结论
+        setTimeout(function () { finish(false); }, 500);
+        try {
+          navigator.clipboard.writeText(text).then(function () {
+            finish(true);
+          }).catch(function () {
+            finish(false);
+          });
+        } catch (e) {
+          finish(false);
+        }
+      } else {
+        finish(false);
+      }
+    });
+  });
+})();
 </script>
 </body>
 </html>
