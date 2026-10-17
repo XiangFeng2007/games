@@ -180,7 +180,81 @@ header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12p
 @keyframes pop{0%{box-shadow:0 0 0 0 rgba(255,255,255,.65)}100%{box-shadow:0 0 0 11px rgba(255,255,255,0)}}
 .cell.last{animation:pop .55s ease-out}
 
+/* ===================== 开火动画 ===================== */
+/* 命中：标记弹入 + 涟漪 */
+@keyframes hitIn{
+  0%{transform:scale(.2);opacity:0}
+  55%{transform:scale(1.22);opacity:1}
+  100%{transform:scale(1);opacity:1}
+}
+@keyframes hitRipple{
+  0%{box-shadow:0 0 0 0 rgba(255,93,108,.85)}
+  100%{box-shadow:0 0 0 16px rgba(255,93,108,0)}
+}
+.cell.fx-hit{animation:hitIn .3s ease-out, hitRipple .42s ease-out}
+.cell.fx-hit::after{animation:hitIn .3s ease-out}
+
+/* 未中：灰点淡入 */
+@keyframes missIn{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:scale(1)}}
+.cell.fx-miss{animation:missIn .2s ease-out}
+
+/* 击沉：整艘船闪红 */
+@keyframes sunkFlash{
+  0%,100%{background:rgba(120,20,30,.55)}
+  50%{background:rgba(255,93,108,.85);box-shadow:0 0 14px rgba(255,93,108,.8)}
+}
+.cell.fx-sunk{animation:sunkFlash .42s ease-in-out 2}
+
+/* AI 瞄准提示 */
+@keyframes aimBlink{0%,100%{border-color:rgba(255,93,108,.2)}50%{border-color:rgba(255,93,108,.85)}}
+.cell.fx-aim{animation:aimBlink .3s ease-in-out}
+
 .cell.disabled{cursor:not-allowed}
+
+/* ===================== 新手教程 ===================== */
+.btn.icon{
+  width:34px;height:34px;padding:0;display:grid;place-items:center;
+  font-size:15px;flex:0 0 auto
+}
+.card.tut{position:relative;max-width:430px;text-align:center}
+.tut-x{
+  position:absolute;top:10px;right:10px;width:28px;height:28px;
+  border:1px solid var(--panel-line);background:transparent;color:var(--muted);
+  border-radius:8px;cursor:pointer;font-size:13px;line-height:1
+}
+.tut-x:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.tut-step{
+  font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;
+  font-variant-numeric:tabular-nums
+}
+.tut-icon{font-size:42px;line-height:1;margin-bottom:10px}
+.tut-body{
+  color:#c3ccea;font-size:13.5px;line-height:1.85;text-align:left;
+  margin:0 0 18px;min-height:110px
+}
+.tut-body ul{margin:6px 0;padding-left:20px}
+.tut-body li{margin:4px 0}
+.tut-body b{color:#fff}
+.tut-body code{
+  background:rgba(255,255,255,.11);padding:1px 6px;border-radius:5px;
+  font-family:Consolas,monospace;font-size:12.5px
+}
+.tut-body .mark{
+  display:inline-block;min-width:22px;text-align:center;padding:0 4px;
+  border-radius:5px;font-size:12px;margin-right:4px
+}
+.m-hit{background:rgba(255,93,108,.3);color:#ff9aa4}
+.m-miss{background:rgba(143,154,192,.25);color:#c3ccea}
+.m-sunk{background:rgba(60,20,30,.7);color:#ff9aa4}
+.tut-nav{display:flex;gap:9px}
+.tut-nav .btn{flex:1 1 0;margin-top:0}
+.tut-nav .btn+.btn{margin-top:0}
+
+@media (max-width:560px){
+  .card.tut{max-width:100%;padding:20px 16px}
+  .tut-body{font-size:13px;min-height:120px}
+  .tut-icon{font-size:36px}
+}
 
 /* ===================== 消息 ===================== */
 .logbox{
@@ -268,6 +342,8 @@ kbd{
       <button data-diff="normal" class="active">普通</button>
       <button data-diff="hard">困难</button>
     </div>
+    <button class="btn icon" id="btnTut" title="玩法教程">❓</button>
+    <button class="btn icon" id="btnSound" title="音效开关">🔊</button>
   </header>
 
   <div class="bar">
@@ -318,7 +394,169 @@ kbd{
   </div>
 </div>
 
+<!-- 新手教程 -->
+<div class="overlay" id="tutorial">
+  <div class="card tut">
+    <button class="tut-x" id="tutX" title="关闭">✕</button>
+    <div class="tut-step" id="tutStep">1 / 4</div>
+    <div class="tut-icon" id="tutIcon">🗺️</div>
+    <h3 id="tutTitle">认识棋盘</h3>
+    <div class="tut-body" id="tutBody"></div>
+    <div class="tut-nav">
+      <button class="btn" id="tutPrev">上一步</button>
+      <button class="btn primary" id="tutNext">下一步</button>
+    </div>
+  </div>
+</div>
+
+<!-- 发现未完成对局 -->
+<div class="overlay" id="resume">
+  <div class="card">
+    <div class="big">💾</div>
+    <h3>发现未完成的对局</h3>
+    <p id="resumeText"></p>
+    <div class="tut-nav">
+      <button class="btn primary" id="resumeYes">继续上局</button>
+      <button class="btn" id="resumeNo">重新开始</button>
+    </div>
+  </div>
+</div>
+
 <script>
+/* =========================================================================
+   FX —— 统一音效 + 动画模块（各游戏内联同一份，保持手感一致）
+   -------------------------------------------------------------------------
+   设计要点：
+   · 纯 WebAudio 合成，无音频文件，离线可用
+   · 支持「音调改变」：tone() 可指定频率，slide() 可做上滑/下滑
+   · 浏览器要求首次交互后才能出声，已自动解锁
+   · 音效开关持久化到 localStorage
+   ========================================================================= */
+var FX = (function () {
+  var ctx = null;
+  var enabled = true;
+  var VOL = 0.07;
+
+  function ac() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  /* 单音：freq 频率(Hz) · dur 时长(s) · type 波形 · vol 音量 · when 延迟(s) */
+  function tone(freq, dur, type, vol, when) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime + (when || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 滑音：从 f1 滑到 f2 —— 「音调改变」的核心效果 */
+  function slide(f1, f2, dur, type, vol) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 音阶：按度数取频率，用于「越高越亮」的递进音效 */
+  function deg(base, step) {
+    // 大调音阶：1 2 3 4 5 6 7 8(高八度)
+    var ratio = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2];
+    var i = Math.abs(step | 0) % 8;
+    var oct = Math.floor(Math.abs(step | 0) / 8);
+    return base * ratio[i] * Math.pow(2, oct);
+  }
+
+  return {
+    tone: tone,
+    slide: slide,
+    degree: deg,
+    unlock: function () { ac(); },
+    on: function () { return enabled; },
+    setEnabled: function (v) {
+      enabled = !!v;
+      try { localStorage.setItem('games.fx.sound', enabled ? '1' : '0'); } catch (e) {}
+    },
+    init: function () {
+      try {
+        var s = localStorage.getItem('games.fx.sound');
+        if (s === '0') enabled = false;
+      } catch (e) {}
+      var unlock = function () { ac(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+        window.addEventListener(ev, unlock, { once: true, passive: true });
+      });
+      return enabled;
+    },
+
+    /* ---- 通用音效 ---- */
+    click:  function () { tone(620, 0.05, 'square', 0.05); },
+    move:   function () { tone(520, 0.05, 'sine', 0.05); },
+    place:  function () { slide(300, 420, 0.07, 'square', 0.055); },
+    /* 递进音：step 越大音调越高（连击 / 合成 / 连中） */
+    step:   function (n) {
+      var s = Math.min(Math.abs(n | 0), 12);
+      tone(deg(440, s), 0.09, 'triangle', 0.07);
+      tone(deg(440, s) * 2, 0.06, 'sine', 0.035, 0.02);
+    },
+    good:   function () { slide(520, 780, 0.1, 'triangle', 0.07); },
+    bad:    function () { slide(240, 140, 0.16, 'sawtooth', 0.07); },
+    hit:    function () { slide(700, 1100, 0.09, 'square', 0.07); },
+    miss:   function () { tone(180, 0.1, 'sine', 0.045); },
+    explode:function () {
+      slide(420, 90, 0.28, 'sawtooth', 0.08);
+      tone(120, 0.2, 'square', 0.05, 0.02);
+    },
+    win:    function () {
+      [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.07, i * 0.09); });
+    },
+    lose:   function () {
+      [392, 330, 262, 196].forEach(function (f, i) { tone(f, 0.24, 'sawtooth', 0.06, i * 0.13); });
+    },
+    undo:   function () { slide(500, 320, 0.1, 'sine', 0.05); },
+    alert:  function () { tone(880, 0.08, 'square', 0.06); tone(880, 0.08, 'square', 0.06, 0.12); }
+  };
+})();
+
+/* =========================================================================
+   Save —— 未打完的对局存档（各游戏把状态序列化后存这里，下次可继续）
+   ========================================================================= */
+var Save = (function () {
+  var PREFIX = 'games.';
+  return {
+    write: function (name, obj) {
+      try { localStorage.setItem(PREFIX + name + '.save', JSON.stringify(obj)); } catch (e) {}
+    },
+    read: function (name) {
+      try {
+        var s = localStorage.getItem(PREFIX + name + '.save');
+        return s ? JSON.parse(s) : null;
+      } catch (e) { return null; }
+    },
+    clear: function (name) {
+      try { localStorage.removeItem(PREFIX + name + '.save'); } catch (e) {}
+    }
+  };
+})();
 /* =========================================================================
    海战棋 — 纯逻辑层（可独立测试，不依赖 DOM）
    ========================================================================= */
@@ -874,6 +1112,7 @@ function log(text, cls){
 function doRotate(){
   if(state.phase !== 'place') return;
   state.horiz = !state.horiz;
+  FX.click();
   renderMyBoard(); renderStatus();
 }
 function doRandom(){
@@ -882,12 +1121,16 @@ function doRandom(){
   state.placedCount = SHIPS.length;
   state.nextShip = SHIPS.length;
   state.hover = null;
+  FX.click();
+  saveGame();
   render();
 }
 function doReset(){
   state.myFleet = E.makeFleet();
   state.placedCount = 0; state.nextShip = 0; state.hover = null;
   state.myShots = E.emptyBoard(0); state.myShotsHit = E.emptyBoard(0);
+  FX.click();
+  Save.clear('battleship');
   render();
   log('已清空重新布阵。', '');
 }
@@ -900,6 +1143,7 @@ function tryPlace(c, r){
     var cells = E.shipCells(c, r, sh.size, state.horiz);
     if(!cells){ log('放不下：超出棋盘边界。', 'bad'); }
     else { log('放不下：与已有舰船重叠。', 'bad'); }
+    FX.bad();
     return;
   }
   var cells2 = E.shipCells(c, r, sh.size, state.horiz);
@@ -908,7 +1152,140 @@ function tryPlace(c, r){
   state.nextShip = state.placedCount;
   state.hover = null;
   log('已放置「' + sh.name + '」于 ' + E.coordName(c,r) + '（' + (state.horiz?'横':'竖') + '向，' + sh.size + '格）。', 'you');
+  FX.place();
+  saveGame();
   render();
+}
+
+/* =========================================================================
+   新手教程
+   ========================================================================= */
+var TUT = [
+  {
+    icon: '🗺️', title: '认识棋盘',
+    body: '<ul>' +
+          '<li>棋盘是 <b>6×6</b> 的海域，横轴 <code>A–F</code>、纵轴 <code>1–6</code>，' +
+          '用坐标报点，例如 <b>B3</b>。</li>' +
+          '<li>左边是你的海域，右边是<b>电脑的海域</b>。</li>' +
+          '<li>目标：先把对方 3 艘舰船全部击沉。</li>' +
+          '</ul>'
+  },
+  {
+    icon: '🚢', title: '布阵',
+    body: '<ul>' +
+          '<li>你有 3 艘舰船：<b>巡洋舰（3 格）</b>、<b>驱逐舰（2 格）</b>、<b>护卫舰（2 格）</b>。</li>' +
+          '<li>点格子放置，按 <code>R</code> 或点「旋转」切换横竖。</li>' +
+          '<li>懒得摆就点 <b>「随机布阵」</b>。</li>' +
+          '<li>摆满 3 艘后，点 <b>「开始战斗」</b>。</li>' +
+          '</ul>'
+  },
+  {
+    icon: '🎯', title: '开火',
+    body: '<ul>' +
+          '<li>点<b>电脑海域</b>的格子开火。</li>' +
+          '<li><span class="mark m-hit">✕</span> 红色 = <b>命中</b>；' +
+          '<span class="mark m-miss">●</span> 灰点 = <b>未中</b>；' +
+          '<span class="mark m-sunk">✕</span> 深色 = <b>击沉</b>。</li>' +
+          '<li>打中后电脑会立刻还手，双方轮流开火。</li>' +
+          '</ul>'
+  },
+  {
+    icon: '🏆', title: '获胜技巧',
+    body: '<ul>' +
+          '<li>先把对方 <b>3 艘舰船全部击沉</b>就赢了。</li>' +
+          '<li><b>关键技巧</b>：打中之后，别换地方 —— 继续打它<b>相邻的格子</b>，' +
+          '因为船是连着的。</li>' +
+          '<li>连中会有音调越来越高的提示音，很容易听出来。</li>' +
+          '</ul>'
+  }
+];
+var tutIdx = 0;
+
+function tutShow(){
+  tutIdx = 0;
+  tutRender();
+  $('tutorial').classList.add('show');
+  FX.click();
+}
+function tutRender(){
+  var t = TUT[tutIdx];
+  $('tutStep').textContent = (tutIdx + 1) + ' / ' + TUT.length;
+  $('tutIcon').textContent = t.icon;
+  $('tutTitle').textContent = t.title;
+  $('tutBody').innerHTML = t.body;
+  $('tutPrev').disabled = tutIdx === 0;
+  $('tutNext').textContent = tutIdx === TUT.length - 1 ? '开始游戏' : '下一步';
+  $('tutPrev').style.opacity = tutIdx === 0 ? '.4' : '';
+}
+function tutNext(){
+  if (tutIdx < TUT.length - 1){ tutIdx++; tutRender(); FX.click(); }
+  else tutClose();
+}
+function tutPrev(){
+  if (tutIdx > 0){ tutIdx--; tutRender(); FX.click(); }
+}
+function tutClose(){
+  $('tutorial').classList.remove('show');
+  try { localStorage.setItem('games.battleship.tut', '1'); } catch (e) {}
+  FX.click();
+}
+
+/* =========================================================================
+   存档：未打完的对局下次可继续
+   ========================================================================= */
+function saveGame(){
+  if (state.phase === 'over') return;
+  // 布阵阶段还没放船就不必存
+  if (state.phase === 'place' && !state.placedCount) { Save.clear('battleship'); return; }
+  Save.write('battleship', {
+    phase: state.phase,
+    difficulty: state.difficulty,
+    turn: state.turn,
+    myFleet: state.myFleet,
+    foeFleet: state.foeFleet,
+    foeShots: state.foeShots,
+    myShots: state.myShots,
+    myShotsHit: state.myShotsHit,
+    placedCount: state.placedCount,
+    nextShip: state.nextShip,
+    combo: state.combo || 0,
+    ai: state.myAI && state.myAI.exportState ? state.myAI.exportState() : null
+  });
+}
+function restoreGame(s){
+  state.phase = s.phase || 'place';
+  state.difficulty = s.difficulty || 'normal';
+  state.turn = s.turn || 'you';
+  state.myFleet = s.myFleet || E.makeFleet();
+  state.foeFleet = s.foeFleet || E.makeFleet();
+  state.foeShots = s.foeShots || E.emptyBoard(0);
+  state.myShots = s.myShots || E.emptyBoard(0);
+  state.myShotsHit = s.myShotsHit || E.emptyBoard(0);
+  state.placedCount = s.placedCount || 0;
+  state.nextShip = s.nextShip || 0;
+  state.combo = s.combo || 0;
+  state.busy = false;
+  state.horiz = true;
+  state.hover = null;
+  state.myAI = E.createAI(state.difficulty);
+  if (s.ai && state.myAI.importState) state.myAI.importState(s.ai);
+  logEl.innerHTML = '';
+  log('已恢复上局。阶段：' + (state.phase === 'battle' ? '战斗' : '布阵') + '。', 'good');
+  render();
+}
+function checkSave(){
+  var s = Save.read('battleship');
+  if (!s) return false;
+  if (s.phase === 'over') { Save.clear('battleship'); return false; }
+  if (s.phase === 'place' && !s.placedCount) { Save.clear('battleship'); return false; }
+  var myLeft = (s.myFleet && s.myFleet.ships)
+    ? s.myFleet.ships.filter(function(x){ return x.hits.length < x.size; }).length : 3;
+  var txt = s.phase === 'battle'
+    ? ('阶段：战斗 · 你的船还剩 ' + myLeft + ' 艘 · 难度：' + diffName(s.difficulty))
+    : ('阶段：布阵 · 已放 ' + s.placedCount + ' 艘');
+  $('resumeText').textContent = txt;
+  $('resume').classList.add('show');
+  return true;
 }
 
 /* ---------- 战斗 ---------- */
@@ -921,14 +1298,18 @@ function startBattle(){
   state.phase = 'battle';
   state.turn = 'you';
   state.busy = false;
+  state.combo = 0;
   state.foeFleet = E.randomFleet();
   state.foeShots = E.emptyBoard(0);      // 对敌方海域的射击记录（玩家视角）
   state.myShots = E.emptyBoard(0);       // 对己方海域的射击记录（AI 打出的）
   state.myShotsHit = E.emptyBoard(0);
+  state.foeShotsHit = E.emptyBoard(0);
   state.history = [];
   state.hover = null;
   state.myAI = E.createAI(state.difficulty);
   log('战斗开始！你先行。难度：' + diffName(state.difficulty) + '。', 'good');
+  FX.good();
+  saveGame();
   render();
 }
 function diffName(d){ return d==='easy'?'简单':(d==='hard'?'困难':'普通'); }
@@ -940,25 +1321,36 @@ function playerFire(c, r){
   var name = E.coordName(c,r);
   if(res === 'miss'){
     state.foeShots[r][c] = 1;
+    state.combo = 0;
     log('你开火 ' + name + '：未命中。', '');
+    FX.miss();
+    fxCell(foeGrid, c, r, 'miss');
   } else {
     state.foeShots[r][c] = res === 'sunk' ? 3 : 2;
+    state.combo = (state.combo || 0) + 1;
     if(res === 'sunk'){
       var ship = E.shipAt(state.foeFleet,c,r);
       log('你击沉了电脑的「' + ship.name + '」！', 'good');
       markSunkOnFoe(ship);
+      FX.explode();
+      FX.step(state.combo + 2);           // 击沉给更高音
+      ship.cells.forEach(function(p){ fxCell(foeGrid, p[0], p[1], 'sunk'); });
     } else {
       log('你击中了 ' + name + '！', 'you');
+      FX.hit();
+      if (state.combo > 1) FX.step(state.combo);   // 连击音调递增
+      fxCell(foeGrid, c, r, 'hit');
     }
   }
   pulse(foeGrid,c,r);
-  render();
+  renderUIOnly();
+  saveGame();
 
   if(E.fleetAllSunk(state.foeFleet)){ endGame('you'); return; }
 
   state.turn = 'ai';
   state.busy = true;
-  render();
+  renderUIOnly();
   scheduleAI();
 }
 
@@ -973,6 +1365,24 @@ function pulse(gridEl,c,r){
   el.classList.remove('last');
   void el.offsetWidth;
   el.classList.add('last');
+}
+
+/** 给某个格子加一次性动画类，动画结束自动移除（不影响状态） */
+function fxCell(gridEl, c, r, kind){
+  var el = cellAt(gridEl, c, r);
+  if(!el) return;
+  var cls = 'fx-' + kind;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+  setTimeout(function(){ el.classList.remove(cls); }, 900);
+}
+
+/** 只刷新两侧棋盘与状态栏，不重建按钮（避免吞掉动画） */
+function renderUIOnly(){
+  renderMyBoard();
+  renderFoeBoard();
+  renderStatus();
 }
 
 function scheduleAI(){
@@ -996,14 +1406,20 @@ function aiTurn(){
     state.myAI.feedback(c,r,'miss');
     state.myShotsHit[r][c] = 1;
     log('电脑开火 ' + name + '：未命中。', 'ai');
+    FX.miss();
+    fxCell(myGrid, c, r, 'miss');
   } else if(res === 'miss'){
     state.myAI.feedback(c,r,'miss');
     state.myShotsHit[r][c] = 1;
     log('电脑开火 ' + name + '：未命中。', 'ai');
+    FX.miss();
+    fxCell(myGrid, c, r, 'miss');
   } else if(res === 'hit'){
     state.myAI.feedback(c,r,'hit');
     state.myShotsHit[r][c] = 2;
     log('电脑击中了你的 ' + name + '！', 'bad');
+    FX.bad();
+    fxCell(myGrid, c, r, 'hit');
   } else if(res === 'sunk'){
     var ship = E.shipAt(state.myFleet,c,r);
     sunkCells = ship.cells.map(function(p){ return [p[0],p[1]]; });
@@ -1011,15 +1427,18 @@ function aiTurn(){
     state.myShotsHit[r][c] = 2;
     ship.cells.forEach(function(p){ state.myShotsHit[p[1]][p[0]] = 2; });
     log('电脑击沉了你的「' + ship.name + '」！', 'bad');
+    FX.explode();
+    ship.cells.forEach(function(p){ fxCell(myGrid, p[0], p[1], 'sunk'); });
   }
   pulse(myGrid,c,r);
-  render();
+  renderUIOnly();
+  saveGame();
 
   if(E.fleetAllSunk(state.myFleet)){ endGame('ai'); return; }
 
   state.turn = 'you';
   state.busy = false;
-  render();
+  renderUIOnly();
 }
 
 function endGame(winner){
@@ -1039,6 +1458,8 @@ function endGame(winner){
     : ('你的舰队被全歼了，电脑还剩 ' + foeLeft + ' 艘。换个策略再试试？');
   $('overlay').classList.add('show');
   log(win ? '★ 你赢了！' : '× 你输了。', win ? 'good' : 'bad');
+  Save.clear('battleship');       // 对局结束，清档
+  if (win) FX.win(); else FX.lose();
 }
 
 function newGame(){
@@ -1054,8 +1475,12 @@ function newGame(){
   state.foeShots = E.emptyBoard(0);
   state.myShots = E.emptyBoard(0);
   state.myShotsHit = E.emptyBoard(0);
+  state.foeShotsHit = E.emptyBoard(0);
+  state.combo = 0;
   logEl.innerHTML = '';
   log('新的一局。请布阵，或直接点「随机布阵」。', 'good');
+  Save.clear('battleship');
+  FX.click();
   render();
 }
 
@@ -1105,6 +1530,38 @@ function bindEvents(){
   $('btnRandom').addEventListener('click', doRandom);
   $('btnReset').addEventListener('click', doReset);
   $('ovAgain').addEventListener('click', newGame);
+
+  /* ---- 教程 ---- */
+  $('btnTut').addEventListener('click', tutShow);
+  $('tutX').addEventListener('click', tutClose);
+  $('tutNext').addEventListener('click', tutNext);
+  $('tutPrev').addEventListener('click', tutPrev);
+
+  /* ---- 音效开关 ---- */
+  function syncSoundBtn(){
+    var b = $('btnSound');
+    b.textContent = FX.on() ? '🔊' : '🔇';
+    b.style.opacity = FX.on() ? '' : '.45';
+  }
+  $('btnSound').addEventListener('click', function(){
+    FX.setEnabled(!FX.on());
+    syncSoundBtn();
+    if (FX.on()) FX.click();
+  });
+
+  /* ---- 继续上局 ---- */
+  $('resumeYes').addEventListener('click', function(){
+    $('resume').classList.remove('show');
+    var s = Save.read('battleship');
+    if (s) restoreGame(s);
+    FX.click();
+  });
+  $('resumeNo').addEventListener('click', function(){
+    $('resume').classList.remove('show');
+    Save.clear('battleship');
+    newGame();
+  });
+
   $('diffs').addEventListener('click', function(e){
     var b = e.target.closest('button[data-diff]');
     if(!b) return;
@@ -1112,17 +1569,21 @@ function bindEvents(){
     Array.prototype.forEach.call($('diffs').children, function(x){
       x.classList.toggle('active', x === b);
     });
+    FX.click();
     if(state.phase === 'battle' && !state.busy){
       log('难度已切换为「' + diffName(state.difficulty) + '」（对电脑后续决策生效）。', '');
     } else {
       log('难度：' + diffName(state.difficulty) + '。', '');
     }
+    saveGame();
   });
   document.addEventListener('keydown', function(e){
     var k = e.key ? e.key.toLowerCase() : '';
     if(k === 'r'){ doRotate(); }
     if(k === ' ' && state.phase === 'place'){ e.preventDefault(); doRandom(); }
   });
+
+  return syncSoundBtn;
 }
 
 function init(){
@@ -1130,11 +1591,26 @@ function init(){
   state.myShots = E.emptyBoard(0);
   state.myShotsHit = E.emptyBoard(0);
   state.foeShots = E.emptyBoard(0);
+  state.foeShotsHit = E.emptyBoard(0);
+  state.combo = 0;
   buildGrid(myGrid, 'mine');
   buildGrid(foeGrid, 'foe');
-  bindEvents();
+  var syncSoundBtn = bindEvents();
+
+  /* 音效初始化 */
+  FX.init();
+  if (syncSoundBtn) syncSoundBtn();
+
   log('欢迎！先放置你的 3 艘舰船（3 / 2 / 2 格）。', 'good');
   render();
+
+  /* 首次进入自动弹教程 */
+  var seen = false;
+  try { seen = localStorage.getItem('games.battleship.tut') === '1'; } catch (e) {}
+  if (!seen) setTimeout(tutShow, 260);
+
+  /* 有未完成对局则提示继续 */
+  setTimeout(checkSave, 120);
 }
 
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
@@ -1153,7 +1629,21 @@ window.__BS_GAME = {
   aiTurn: aiTurn,
   render: render,
   cellAt: function(c,r){ return cellAt(foeGrid,c,r); },
-  myCellAt: function(c,r){ return cellAt(myGrid,c,r); }
+  myCellAt: function(c,r){ return cellAt(myGrid,c,r); },
+  /* 新增：教程 / 存档 / 音效 */
+  tutShow: tutShow,
+  tutNext: tutNext,
+  tutPrev: tutPrev,
+  tutClose: tutClose,
+  tutIndex: function(){ return tutIdx; },
+  tutTotal: function(){ return TUT.length; },
+  save: saveGame,
+  checkSave: checkSave,
+  restoreGame: restoreGame,
+  loadSave: function(){ return Save.read('battleship'); },
+  clearSave: function(){ Save.clear('battleship'); },
+  fx: FX,
+  saveMod: Save
 };
 
 })();

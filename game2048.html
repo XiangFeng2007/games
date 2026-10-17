@@ -176,6 +176,7 @@
   <div class="toolbar">
     <button class="btn" id="undo" type="button">↶ 撤销</button>
     <button class="btn primary" id="newgame" type="button">新游戏</button>
+    <button class="btn" id="btnSound" type="button" title="音效开关">🔊</button>
   </div>
 
   <div id="board">
@@ -202,6 +203,18 @@
         <button class="btn primary" id="overnew" type="button">再玩一局</button>
       </div>
     </div>
+
+    <div class="overlay hidden" id="resume">
+      <h2 class="over-title">发现未完成的对局</h2>
+      <div class="stat-row">
+        <div class="stat"><span class="k">分数</span><span class="v" id="resumescore">0</span></div>
+        <div class="stat win"><span class="k">最大方块</span><span class="v" id="resumemax">0</span></div>
+      </div>
+      <div class="toolbar" style="margin:0;width:100%;max-width:290px">
+        <button class="btn primary" id="resumeYes" type="button">继续上局</button>
+        <button class="btn" id="resumeNo" type="button">重新开始</button>
+      </div>
+    </div>
   </div>
 
   <p class="hint">
@@ -213,6 +226,141 @@
 <script>
 (function(){
   'use strict';
+
+/* =========================================================================
+   FX —— 统一音效 + 动画模块（各游戏内联同一份，保持手感一致）
+   -------------------------------------------------------------------------
+   设计要点：
+   · 纯 WebAudio 合成，无音频文件，离线可用
+   · 支持「音调改变」：tone() 可指定频率，slide() 可做上滑/下滑
+   · 浏览器要求首次交互后才能出声，已自动解锁
+   · 音效开关持久化到 localStorage
+   ========================================================================= */
+var FX = (function () {
+  var ctx = null;
+  var enabled = true;
+  var VOL = 0.07;
+
+  function ac() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  /* 单音：freq 频率(Hz) · dur 时长(s) · type 波形 · vol 音量 · when 延迟(s) */
+  function tone(freq, dur, type, vol, when) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime + (when || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 滑音：从 f1 滑到 f2 —— 「音调改变」的核心效果 */
+  function slide(f1, f2, dur, type, vol) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 音阶：按度数取频率，用于「越高越亮」的递进音效 */
+  function deg(base, step) {
+    // 大调音阶：1 2 3 4 5 6 7 8(高八度)
+    var ratio = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2];
+    var i = Math.abs(step | 0) % 8;
+    var oct = Math.floor(Math.abs(step | 0) / 8);
+    return base * ratio[i] * Math.pow(2, oct);
+  }
+
+  return {
+    tone: tone,
+    slide: slide,
+    degree: deg,
+    unlock: function () { ac(); },
+    on: function () { return enabled; },
+    setEnabled: function (v) {
+      enabled = !!v;
+      try { localStorage.setItem('games.fx.sound', enabled ? '1' : '0'); } catch (e) {}
+    },
+    init: function () {
+      try {
+        var s = localStorage.getItem('games.fx.sound');
+        if (s === '0') enabled = false;
+      } catch (e) {}
+      var unlock = function () { ac(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+        window.addEventListener(ev, unlock, { once: true, passive: true });
+      });
+      return enabled;
+    },
+
+    /* ---- 通用音效 ---- */
+    click:  function () { tone(620, 0.05, 'square', 0.05); },
+    move:   function () { tone(520, 0.05, 'sine', 0.05); },
+    place:  function () { slide(300, 420, 0.07, 'square', 0.055); },
+    /* 递进音：step 越大音调越高（连击 / 合成 / 连中） */
+    step:   function (n) {
+      var s = Math.min(Math.abs(n | 0), 12);
+      tone(deg(440, s), 0.09, 'triangle', 0.07);
+      tone(deg(440, s) * 2, 0.06, 'sine', 0.035, 0.02);
+    },
+    good:   function () { slide(520, 780, 0.1, 'triangle', 0.07); },
+    bad:    function () { slide(240, 140, 0.16, 'sawtooth', 0.07); },
+    hit:    function () { slide(700, 1100, 0.09, 'square', 0.07); },
+    miss:   function () { tone(180, 0.1, 'sine', 0.045); },
+    explode:function () {
+      slide(420, 90, 0.28, 'sawtooth', 0.08);
+      tone(120, 0.2, 'square', 0.05, 0.02);
+    },
+    win:    function () {
+      [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.07, i * 0.09); });
+    },
+    lose:   function () {
+      [392, 330, 262, 196].forEach(function (f, i) { tone(f, 0.24, 'sawtooth', 0.06, i * 0.13); });
+    },
+    undo:   function () { slide(500, 320, 0.1, 'sine', 0.05); },
+    alert:  function () { tone(880, 0.08, 'square', 0.06); tone(880, 0.08, 'square', 0.06, 0.12); }
+  };
+})();
+
+/* =========================================================================
+   Save —— 未打完的对局存档（各游戏把状态序列化后存这里，下次可继续）
+   ========================================================================= */
+var Save = (function () {
+  var PREFIX = 'games.';
+  return {
+    write: function (name, obj) {
+      try { localStorage.setItem(PREFIX + name + '.save', JSON.stringify(obj)); } catch (e) {}
+    },
+    read: function (name) {
+      try {
+        var s = localStorage.getItem(PREFIX + name + '.save');
+        return s ? JSON.parse(s) : null;
+      } catch (e) { return null; }
+    },
+    clear: function (name) {
+      try { localStorage.removeItem(PREFIX + name + '.save'); } catch (e) {}
+    }
+  };
+})();
 
   var SIZE = 4;
   var BEST_KEY = 'game2048.best';
@@ -245,6 +393,7 @@
   var score = 0, best = 0;
   var won = false, over = false;
   var history = [];        // 撤销栈（多步）
+  var winSoundPlayed = false;   // 避免重复播放胜利音效
   var cell = 40, gap = 12, pad = 12;
 
   /* ---------- 尺寸与定位 ---------- */
@@ -382,6 +531,7 @@
     var before = snapshot();
     var m = toMatrix();
     var moved = false, gained = 0;
+    var mergeValues = [];                 // 本次移动合成的所有数值（用于音效）
     var mergedIds = new Set();
 
     var rows = dr === 1 ? [3,2,1,0] : [0,1,2,3];
@@ -409,6 +559,7 @@
             tiles.push(nt);
             m[tr][tc] = nt;
             gained += nt.value;
+            mergeValues.push(nt.value);
             moved = true;
             merged = true;
           }
@@ -443,11 +594,61 @@
 
     render();
 
+    /* ---- 音效：合成的数值越大，音调越高 ---- */
+    if (mergeValues.length){
+      mergeValues.forEach(function(v, i){
+        // log2(v)-1：合成 4→1、8→2、16→3 …… 2048→10，形成上行琶音
+        var n = Math.max(1, Math.round(Math.log(v) / Math.LN2) - 1);
+        if (i === 0) { setTimeout(function(){ FX.step(n); }, 0); }
+        else { setTimeout(function(){ FX.step(n); }, i * 70); }   // 多次合成依次弹出
+      });
+      if (mergeValues.some(function(v){ return v >= 256; })) FX.good();
+    } else {
+      FX.move();                       // 只是平移，没有合成
+    }
+    if (won && !winSoundPlayed){ winSoundPlayed = true; FX.win(); }
+
     if (!canMove()){
       over = true;
-      showOver();
+      showOver();                      // showOver 里会清档
+    } else {
+      saveGame();
     }
     return true;
+  }
+
+  /* ---------- 存档：未打完的对局下次可继续 ---------- */
+  /** 把 values() 的二维数组摊平成一维，方便统计 */
+  function flatValues(v){
+    var out = [];
+    for (var r = 0; r < SIZE; r++) for (var c = 0; c < SIZE; c++){
+      out.push((v && v[r] && v[r][c]) || 0);
+    }
+    return out;
+  }
+  function saveGame(){
+    Save.write('2048', {
+      v: values(), score: score, won: won, over: over,
+      history: history.slice(-20)      // 只留最近 20 步，避免存档过大
+    });
+  }
+  function loadSave(){
+    var s = Save.read('2048');
+    if (!s || s.over) return null;
+    var flat = flatValues(s.v);
+    if (flat.filter(function(x){ return x > 0; }).length < 2) return null;  // 空盘不算未完成
+    return s;
+  }
+  function restoreGame(s){
+    loadValues(s.v);
+    score = s.score || 0;
+    won = !!s.won;
+    over = false;
+    history = Array.isArray(s.history) ? s.history.slice() : [];
+    hideOver();
+    winEl.classList.add('hidden');
+    winSoundPlayed = won;
+    render(); layout();
   }
 
   function showOver(){
@@ -456,6 +657,8 @@
     overScore.textContent = score;
     overBest.textContent = best;
     overEl.classList.remove('hidden');
+    Save.clear('2048');            // 已结束的对局不再保留
+    FX.lose();
   }
   function hideOver(){ overEl.classList.add('hidden'); }
 
@@ -469,8 +672,11 @@
     over = false;
     hideOver();
     winEl.classList.add('hidden');
+    winSoundPlayed = won;
     render();
     layout();
+    FX.undo();
+    saveGame();
     return true;
   }
   function newGame(){
@@ -481,12 +687,16 @@
     score = 0;
     won = false;
     over = false;
+    winSoundPlayed = false;
     hideOver();
     winEl.classList.add('hidden');
     addRandom();
     addRandom();
     render();
     layout();
+    Save.clear('2048');
+    saveGame();
+    FX.click();
   }
 
   /* ---------- 键盘 ---------- */
@@ -554,12 +764,56 @@
   document.getElementById('overnew').addEventListener('click', function(){ newGame(); });
   document.getElementById('overundo').addEventListener('click', function(){ undo(); });
 
+  /* ---------- 音效开关 ---------- */
+  var soundBtn = document.getElementById('btnSound');
+  function syncSoundBtn(){
+    soundBtn.textContent = FX.on() ? '🔊' : '🔇';
+    soundBtn.style.opacity = FX.on() ? '' : '.45';
+  }
+  soundBtn.addEventListener('click', function(){
+    FX.setEnabled(!FX.on());
+    syncSoundBtn();
+    if (FX.on()) FX.click();
+  });
+
+  /* ---------- 未完成对局的继续提示 ---------- */
+  var resumeEl = document.getElementById('resume');
+  var pendingSave = null;
+  function showResume(s){
+    pendingSave = s;
+    var flat = flatValues(s.v);
+    var nonZero = flat.filter(function(x){ return x > 0; });
+    document.getElementById('resumescore').textContent = s.score || 0;
+    document.getElementById('resumemax').textContent = nonZero.length ? Math.max.apply(null, nonZero) : 0;
+    resumeEl.classList.remove('hidden');
+  }
+  document.getElementById('resumeYes').addEventListener('click', function(){
+    resumeEl.classList.add('hidden');
+    if (pendingSave) restoreGame(pendingSave);
+    FX.click();
+  });
+  document.getElementById('resumeNo').addEventListener('click', function(){
+    resumeEl.classList.add('hidden');
+    Save.clear('2048');
+    newGame();
+  });
+
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', function(){ window.setTimeout(layout, 120); });
 
   /* ---------- 启动 ---------- */
   best = parseInt(storeGet(BEST_KEY) || '0', 10) || 0;
-  newGame();
+  FX.init();
+  syncSoundBtn();
+  var savedGame = loadSave();
+  if (savedGame){
+    // 先铺一个空盘做背景，再弹出「继续上局」
+    newGame();
+    Save.write('2048', savedGame);     // newGame 会清档，这里恢复回去
+    showResume(savedGame);
+  } else {
+    newGame();
+  }
 
   /* ---------- 测试探针（无副作用） ---------- */
   window.__G = {

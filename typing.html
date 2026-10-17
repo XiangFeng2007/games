@@ -666,13 +666,29 @@ const Sound = (() => {
   return {
     toggle(){ on = !on; if (on) ensure(); return on; },
     isOn(){ return on; },
-    hit(){ tone(720 + rand(120), 0.07, 'square', 0.055); },
-    kill(n){ tone(880, 0.09, 'triangle', 0.08); tone(1320, 0.11, 'triangle', 0.06, 0.05); if (n > 1) tone(1760, 0.12, 'sine', 0.05, 0.1); },
+    /* 打对：音调随连击升高 —— 连击越高越亮（大调音阶递进） */
+    hit(combo){
+      const ratio = [1,1.125,1.25,1.333,1.5,1.667,1.875,2];
+      const s = Math.min(Math.abs(combo || 0), 12);
+      const f = 660 * ratio[s % 8] * Math.pow(2, Math.floor(s / 8));
+      tone(f + rand(30), 0.065, 'square', 0.05);
+    },
+    /* 击破整词：连击越高音阶越亮 */
+    kill(n, combo){
+      const ratio = [1,1.125,1.25,1.333,1.5,1.667,1.875,2];
+      const s = Math.min(Math.abs(combo || 1), 12);
+      const f = 700 * ratio[s % 8] * Math.pow(2, Math.floor(s / 8));
+      tone(f, 0.09, 'triangle', 0.075);
+      tone(f * 1.5, 0.11, 'triangle', 0.055, 0.05);
+      if (n > 1) tone(f * 2, 0.12, 'sine', 0.045, 0.1);
+    },
     error(){ tone(150, 0.16, 'sawtooth', 0.07); },
     miss(){ tone(110, 0.3, 'sawtooth', 0.07); tone(80, 0.34, 'sine', 0.06, 0.05); },
     level(){ [523,659,784,1046].forEach((f,i)=>tone(f,0.14,'triangle',0.07,i*0.075)); },
     over(){ [440,392,330,247].forEach((f,i)=>tone(f,0.3,'sawtooth',0.07,i*0.16)); },
-    finish(){ [523,659,784,1046,1318].forEach((f,i)=>tone(f,0.18,'triangle',0.07,i*0.09)); }
+    finish(){ [523,659,784,1046,1318].forEach((f,i)=>tone(f,0.18,'triangle',0.07,i*0.09)); },
+    click(){ tone(620, 0.05, 'square', 0.045); },
+    undo(){ tone(500, 0.08, 'sine', 0.05); tone(340, 0.09, 'sine', 0.04, 0.05); }
   };
 })();
 
@@ -1223,7 +1239,7 @@ const Arcade = {
     const p = best;
     p.idx++;
     p.spans[p.idx - 1].className = 'done';
-    Sound.hit();
+    Sound.hit(this.combo);          // 音调随连击升高
     kbFlash(p.text[p.idx - 1], 'hit');
     if (p.idx >= p.text.length) {
       // 整词击破
@@ -1233,7 +1249,7 @@ const Arcade = {
       const pts = Math.round((10 + p.text.length * 6) * mult);
       this.score += pts;
       this.kills++;
-      Sound.kill(p.text.length);
+      Sound.kill(p.text.length, this.combo);   // 连击越高越亮
       this.boom(p, pts);
       if (this.kills % 12 === 0) this.levelUp();
     } else {
@@ -1392,9 +1408,56 @@ const Practice = {
     this.restart();
   },
 
+  /** 保存练习进度（下次打开可继续这一段） */
+  saveProgress() {
+    if (this.finished || this.idx <= 0) { this.clearProgress(); return; }
+    try {
+      localStorage.setItem('games.typing.save', JSON.stringify({
+        set: this.set, text: this.text, idx: this.idx,
+        correct: this.correct, wrong: this.wrong, totalKeys: this.totalKeys,
+        startTime: this.startTime, ts: Date.now()
+      }));
+    } catch (e) {}
+  },
+  clearProgress() {
+    try { localStorage.removeItem('games.typing.save'); } catch (e) {}
+  },
+  readProgress() {
+    try {
+      const s = localStorage.getItem('games.typing.save');
+      if (!s) return null;
+      const o = JSON.parse(s);
+      if (!o || !o.text || o.idx <= 0 || o.idx >= o.text.length) return null;
+      return o;
+    } catch (e) { return null; }
+  },
+  /** 恢复上次进度 */
+  restoreProgress(o) {
+    this.set = o.set || this.set;
+    $('#textSet').value = this.set;
+    this.text = o.text;
+    this.idx = 0; this.correct = 0; this.wrong = 0; this.totalKeys = 0;
+    this.startTime = o.startTime || 0;
+    this.finished = false;
+    this.render();
+    // 把已打的部分标记为完成
+    for (let i = 0; i < o.idx && i < this.spans.length; i++) {
+      this.spans[i].classList.remove('pending');
+      this.spans[i].classList.add('ok');
+    }
+    this.idx = o.idx;
+    this.correct = o.correct || 0;
+    this.wrong = o.wrong || 0;
+    this.totalKeys = o.totalKeys || 0;
+    this.updateCursor();
+    this.hintNext();
+    this.refreshStats();
+  },
+
   restart() {
     this.idx = 0; this.correct = 0; this.wrong = 0; this.totalKeys = 0;
     this.startTime = 0; this.finished = false; this.wpm = 0; this.acc = 100;
+    this.clearProgress();
     this.render();
     updateHud();
   },
@@ -1498,7 +1561,8 @@ const Practice = {
       s.classList.remove('pending', 'bad', 'composing');
       s.classList.add('ok');
       this.flashChar(this.idx);
-      Sound.hit();
+      /* 跟打练习：音调随连续正确数升高（错一次归零） */
+      Sound.hit(this.correct - this.wrong);
       kbFlash(ch, 'hit');
     } else {
       this.wrong++;
@@ -1511,6 +1575,7 @@ const Practice = {
     this.updateCursor();
     this.hintNext();
     this.refreshStats();
+    this.saveProgress();               // 记住进度
     if (this.idx >= this.text.length) this.finish();
   },
 
@@ -1545,6 +1610,7 @@ const Practice = {
   finish() {
     this.finished = true;
     kbNext(null);
+    this.clearProgress();              // 打完了，清掉进度存档
     const seconds = (performance.now() - this.startTime) / 1000;
     const mins = seconds / 60;
     const isZh = this.isZh();
@@ -1582,6 +1648,7 @@ function showResult(o) {
   $('#mStats').innerHTML = o.stats.map(s =>
     '<div class="stat"><div class="v">' + esc(String(s[1])) + '</div><div class="l">' + esc(String(s[0])) + '</div></div>'
   ).join('');
+  $('#mAgain').textContent = o.againLabel || '再练一次';
   resultAgain = o.onAgain || null;
   $('#modal').classList.add('show');
 }
@@ -1903,6 +1970,25 @@ function showScreenHomeInit() {
   $('#chipLives').style.display = 'none';
   $('#chipCombo').style.display = 'none';
   updateHud();
+}
+
+/* 启动时若检测到未完成的跟打进度，提示是否继续 */
+function checkTypingProgress() {
+  const p = Practice.readProgress();
+  if (!p) return;
+  const pct = Math.round(p.idx / p.text.length * 100);
+  showResult({
+    title: '继续上次的练习？',
+    record: false,
+    stats: [
+      ['进度', pct + '%'],
+      ['已打', p.idx + ' / ' + p.text.length],
+      ['正确', p.correct],
+      ['错误', p.wrong]
+    ],
+    againLabel: '继续练习',
+    onAgain: () => { Practice.restoreProgress(p); showScreen('practice'); }
+  });
 }
 boot();
 </script>

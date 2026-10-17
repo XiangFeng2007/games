@@ -67,6 +67,30 @@ header .sub{color:var(--muted);font-size:12.5px;margin-top:8px;line-height:1.6}
 .seg-wrap>div{flex:1 1 210px;min-width:0}
 .lbl{font-size:11px;color:var(--muted);letter-spacing:.4px;margin:0 0 5px 3px;font-weight:600}
 
+/* ---------- 未完成对局提示条 ---------- */
+.resume{
+  padding:11px 12px;margin-bottom:10px;display:none;
+  align-items:center;gap:10px;flex-wrap:wrap;
+  border-color:rgba(110,168,255,.45);
+  background:linear-gradient(180deg,rgba(110,168,255,.16),rgba(160,107,255,.10))
+}
+.resume.show{display:flex}
+.resume .rt{flex:1 1 240px;min-width:0;font-size:13px;line-height:1.6;color:var(--text)}
+.resume .rt b{color:#fff}
+.resume .rb{display:flex;gap:8px;flex:0 0 auto}
+.resume .btn{padding:9px 14px;font-size:13px;border-radius:10px}
+
+/* ---------- 音效开关 ---------- */
+.snd{
+  flex:0 0 auto;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);
+  font:inherit;font-size:15px;line-height:1;padding:7px 9px;border-radius:10px;cursor:pointer;
+  transition:background .16s ease,transform .12s ease;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation
+}
+.snd:hover{background:rgba(255,255,255,.1)}
+.snd:active{transform:scale(.94)}
+.snd.off{opacity:.45}
+
 /* ---------- 状态条 ---------- */
 .statusbar{
   display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:10px;
@@ -104,12 +128,7 @@ canvas.locked{cursor:default}
   background:rgba(11,16,32,.85);border:1px solid var(--line)
 }
 .thinking.show{display:flex}
-.spin{
-  width:13px;height:13px;border-radius:50%;
-  border:2px solid rgba(110,168,255,.3);border-top-color:var(--accent);
-  animation:spin .7s linear infinite
-}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* AI 思考提示：只用状态栏文字，不加转圈动画 */
 
 /* ---------- 按钮 ---------- */
 .buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -153,6 +172,14 @@ footer b{color:var(--text);font-weight:600}
     <p class="sub">15×15 棋盘 · 先连成五子者胜 · 手机点按、电脑点击均可落子</p>
   </header>
 
+  <div class="panel resume" id="resumeBar" hidden>
+    <div class="rt" id="resumeText"></div>
+    <div class="rb">
+      <button type="button" class="btn" id="btnResume">继续上局</button>
+      <button type="button" class="btn" id="btnNewGame">重新开始</button>
+    </div>
+  </div>
+
   <div class="panel controls">
     <div class="seg-wrap">
       <div>
@@ -177,12 +204,13 @@ footer b{color:var(--text);font-weight:600}
     <span class="dot" id="stDot" aria-hidden="true"></span>
     <span id="stText" aria-live="polite">黑方落子</span>
     <span id="stInfo"></span>
+    <button type="button" class="snd" id="btnSound" title="音效开关" aria-label="音效开关">🔊</button>
   </div>
 
   <div class="panel board-wrap">
     <div class="board-inner">
       <canvas id="board" width="880" height="880"></canvas>
-      <div class="thinking" id="thinking"><span class="spin"></span><span>AI 思考中…</span></div>
+      <div class="thinking" id="thinking"><span>AI 思考中…</span></div>
     </div>
   </div>
 
@@ -199,7 +227,143 @@ footer b{color:var(--text);font-weight:600}
 
 <script>
 "use strict";
+/* =========================================================================
+   FX —— 统一音效 + 动画模块（内联自 fx-spec.js，5 个游戏共用同一份，勿改内部实现）
+   -------------------------------------------------------------------------
+   设计要点：
+   · 纯 WebAudio 合成，无音频文件，离线可用
+   · 支持「音调改变」：tone() 可指定频率，slide() 可做上滑/下滑
+   · 浏览器要求首次交互后才能出声，已自动解锁
+   · 音效开关持久化到 localStorage
+   ========================================================================= */
+var FX = (function () {
+  var ctx = null;
+  var enabled = true;
+  var VOL = 0.07;
+
+  function ac() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  /* 单音：freq 频率(Hz) · dur 时长(s) · type 波形 · vol 音量 · when 延迟(s) */
+  function tone(freq, dur, type, vol, when) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime + (when || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 滑音：从 f1 滑到 f2 —— 「音调改变」的核心效果 */
+  function slide(f1, f2, dur, type, vol) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 音阶：按度数取频率，用于「越高越亮」的递进音效 */
+  function deg(base, step) {
+    // 大调音阶：1 2 3 4 5 6 7 8(高八度)
+    var ratio = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2];
+    var i = Math.abs(step | 0) % 8;
+    var oct = Math.floor(Math.abs(step | 0) / 8);
+    return base * ratio[i] * Math.pow(2, oct);
+  }
+
+  return {
+    tone: tone,
+    slide: slide,
+    degree: deg,
+    unlock: function () { ac(); },
+    on: function () { return enabled; },
+    setEnabled: function (v) {
+      enabled = !!v;
+      try { localStorage.setItem('games.fx.sound', enabled ? '1' : '0'); } catch (e) {}
+    },
+    init: function () {
+      try {
+        var s = localStorage.getItem('games.fx.sound');
+        if (s === '0') enabled = false;
+      } catch (e) {}
+      var unlock = function () { ac(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+        window.addEventListener(ev, unlock, { once: true, passive: true });
+      });
+      return enabled;
+    },
+
+    /* ---- 通用音效 ---- */
+    click:  function () { tone(620, 0.05, 'square', 0.05); },
+    move:   function () { tone(520, 0.05, 'sine', 0.05); },
+    place:  function () { slide(300, 420, 0.07, 'square', 0.055); },
+    /* 递进音：step 越大音调越高（连击 / 合成 / 连中） */
+    step:   function (n) {
+      var s = Math.min(Math.abs(n | 0), 12);
+      tone(deg(440, s), 0.09, 'triangle', 0.07);
+      tone(deg(440, s) * 2, 0.06, 'sine', 0.035, 0.02);
+    },
+    good:   function () { slide(520, 780, 0.1, 'triangle', 0.07); },
+    bad:    function () { slide(240, 140, 0.16, 'sawtooth', 0.07); },
+    hit:    function () { slide(700, 1100, 0.09, 'square', 0.07); },
+    miss:   function () { tone(180, 0.1, 'sine', 0.045); },
+    explode:function () {
+      slide(420, 90, 0.28, 'sawtooth', 0.08);
+      tone(120, 0.2, 'square', 0.05, 0.02);
+    },
+    win:    function () {
+      [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.07, i * 0.09); });
+    },
+    lose:   function () {
+      [392, 330, 262, 196].forEach(function (f, i) { tone(f, 0.24, 'sawtooth', 0.06, i * 0.13); });
+    },
+    undo:   function () { slide(500, 320, 0.1, 'sine', 0.05); },
+    alert:  function () { tone(880, 0.08, 'square', 0.06); tone(880, 0.08, 'square', 0.06, 0.12); }
+  };
+})();
+
+/* =========================================================================
+   Save —— 未打完的对局存档（各游戏把状态序列化后存这里，下次可继续）
+   ========================================================================= */
+var Save = (function () {
+  var PREFIX = 'games.';
+  return {
+    write: function (name, obj) {
+      try { localStorage.setItem(PREFIX + name + '.save', JSON.stringify(obj)); } catch (e) {}
+    },
+    read: function (name) {
+      try {
+        var s = localStorage.getItem(PREFIX + name + '.save');
+        return s ? JSON.parse(s) : null;
+      } catch (e) { return null; }
+    },
+    clear: function (name) {
+      try { localStorage.removeItem(PREFIX + name + '.save'); } catch (e) {}
+    }
+  };
+})();
+
 (function () {
+"use strict";
 /* =========================================================================
    0. 基础常量
    ========================================================================= */
@@ -818,14 +982,57 @@ var G = {
   winner: 0,
   winCells: null,
   anims: [],
+  ghosts: [],            /* 悔棋：缩小淡出的残影 */
   lastIdx: -1,
+  markT0: -1e9,          /* 最后一手角标淡入起点 */
+  winT0: -1e9,           /* 获胜高亮序列起点 */
+  winDone: false,
+  drawCount: 0,          /* 重绘计数（测试用：验证动画期间持续重绘） */
   aiColor: WHITE,
   thinking: false,
   ms: 0
 };
 
+/* ---------- 动画参数（落子 180~220ms，符合「简单但明显」） ---------- */
+var DUR_PLACE = 200;     /* 落子：由小变大弹入 + 轻微回弹 */
+var PLACE_DROP = 0.72;   /* 前 72% 时间快速到位并略微过冲，后 28% 回弹 */
+var PLACE_SCALE0 = 0.5;  /* 起始缩放 */
+var PLACE_OVER = 1.17;   /* 过冲峰值 */
+var DROP_CELLS = 0.85;   /* 从上方落下的距离（单位：格） */
+var DUR_GHOST = 150;     /* 悔棋淡出 */
+var DUR_MARK = 220;      /* 最后一手角标淡入 */
+var WIN_STEP = 60;       /* 获胜 5 子依次高亮间隔 */
+var WIN_FADE = 200;      /* 单颗高亮淡入时长 */
+var WIN_TAIL = 700;      /* 全部高亮后停留（之后停 rAF，画面保持亮线） */
+
+function clamp01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+function easeOutCubic(x) { x = clamp01(x); return 1 - Math.pow(1 - x, 3); }
+function easeOutBack(x) {
+  x = clamp01(x);
+  var c1 = 1.9, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+}
+
+/* 落子动画：返回 {scale, drop}（drop 为向上偏移的格数） */
+function placeTransform(t) {
+  if (t < PLACE_DROP) {
+    var e = easeOutCubic(t / PLACE_DROP);
+    return { scale: PLACE_SCALE0 + (PLACE_OVER - PLACE_SCALE0) * e, drop: (1 - e) * DROP_CELLS };
+  }
+  /* 回弹：从过冲峰值 damped 回到 1.0，中间轻微低于 1 */
+  var q = (t - PLACE_DROP) / (1 - PLACE_DROP);
+  var k = Math.cos(q * Math.PI * 1.35) * Math.pow(1 - q, 1.6);
+  return { scale: 1 + (PLACE_OVER - 1) * k, drop: 0 };
+}
+
+function animOf(idx) {
+  for (var i = 0; i < G.anims.length; i++) if (G.anims[i].idx === idx) return G.anims[i];
+  return null;
+}
+
 function draw() {
   var W = canvas.width, p = cellPx(), i;
+  G.drawCount++;
   ctx.clearRect(0, 0, W, W);
 
   var outer = ctx.createLinearGradient(0, 0, W, W);
@@ -875,10 +1082,16 @@ function draw() {
   }
 
   var now = performance.now();
+  /* 推进落子动画；跑满即清理，避免无限累积 */
   for (i = G.anims.length - 1; i >= 0; i--) {
     var a = G.anims[i];
-    a.t = (now - a.t0) / 180;
+    a.t = (now - a.t0) / (a.dur || DUR_PLACE);
     if (a.t >= 1) G.anims.splice(i, 1);
+  }
+  /* 悔棋残影：缩小淡出 */
+  for (i = G.ghosts.length - 1; i >= 0; i--) {
+    G.ghosts[i].t = (now - G.ghosts[i].t0) / DUR_GHOST;
+    if (G.ghosts[i].t >= 1) G.ghosts.splice(i, 1);
   }
 
   /* 棋子：最后一手最后画 */
@@ -890,56 +1103,86 @@ function draw() {
   }
   for (i = 0; i < used.length; i++) drawStone(used[i], p);
 
-  /* 最后一手标记 */
-  if (G.lastIdx >= 0 && G.board[G.lastIdx] !== 0) {
-    drawLastMark((G.lastIdx / N) | 0, G.lastIdx % N, p);
+  /* 悔棋残影（画在棋子之上，做缩小淡出） */
+  for (i = 0; i < G.ghosts.length; i++) {
+    var gh = G.ghosts[i], gt = clamp01(gh.t), ge = 1 - easeOutCubic(gt);
+    drawStone(gh.idx, p, { color: gh.color, scale: 0.30 + 0.70 * ge, alpha: ge * 0.95 });
   }
 
-  /* 胜利连线 */
-  if (G.winCells) {
-    var pulse = 0.5 + 0.5 * Math.sin(now / 300);
-    var f = G.winCells[0], l = G.winCells[G.winCells.length - 1];
+  /* 最后一手标记（金色角标 + 淡入） */
+  if (G.lastIdx >= 0 && G.board[G.lastIdx] !== 0) {
+    var mk = clamp01((now - G.markT0) / DUR_MARK);
+    drawLastMark((G.lastIdx / N) | 0, G.lastIdx % N, p, mk);
+  }
+
+  /* 获胜连线：5 子依次高亮 + 发光连线；序列跑完即停（静态保留亮线） */
+  if (G.winCells && G.winCells.length) {
+    var nWin = G.winCells.length;
+    var el = now - G.winT0;
+    var total = (nWin - 1) * WIN_STEP + WIN_FADE + WIN_TAIL;
+    if (el >= total) G.winDone = true;
+    var lineProg = clamp01(el / Math.max(1, (nWin - 1) * WIN_STEP + WIN_FADE));
+
+    /* 发光连线：随高亮逐段延伸 */
+    var f = G.winCells[0], l = G.winCells[nWin - 1];
+    var fx0 = px(f % N, p), fy0 = px((f / N) | 0, p);
+    var lx = px(l % N, p), ly = px((l / N) | 0, p);
     ctx.save();
-    ctx.strokeStyle = 'rgba(61,220,151,' + (0.6 + 0.35 * pulse).toFixed(3) + ')';
-    ctx.lineWidth = Math.max(3, p * 0.2);
     ctx.lineCap = 'round';
-    ctx.shadowColor = 'rgba(61,220,151,.7)';
-    ctx.shadowBlur = p * 0.45;
+    ctx.shadowColor = 'rgba(61,220,151,.85)';
+    ctx.shadowBlur = p * 0.5;
+    ctx.strokeStyle = 'rgba(61,220,151,.92)';
+    ctx.lineWidth = Math.max(3, p * 0.2);
     ctx.beginPath();
-    ctx.moveTo(px(f % N, p), px((f / N) | 0, p));
-    ctx.lineTo(px(l % N, p), px((l / N) | 0, p));
+    ctx.moveTo(fx0, fy0);
+    ctx.lineTo(fx0 + (lx - fx0) * lineProg, fy0 + (ly - fy0) * lineProg);
     ctx.stroke();
     ctx.restore();
-    for (i = 0; i < G.winCells.length; i++) {
+
+    for (i = 0; i < nWin; i++) {
       var wi = G.winCells[i];
+      var hf = clamp01((el - i * WIN_STEP) / WIN_FADE);
+      if (hf <= 0) continue;
+      var hb = easeOutBack(hf);
       ctx.beginPath();
-      ctx.arc(px(wi % N, p), px((wi / N) | 0, p), p * 0.47, 0, 6.2832);
-      ctx.strokeStyle = 'rgba(61,220,151,' + (0.85 + 0.15 * pulse).toFixed(3) + ')';
+      ctx.arc(px(wi % N, p), px((wi / N) | 0, p), p * 0.47 * (0.55 + 0.45 * hb), 0, 6.2832);
+      ctx.strokeStyle = 'rgba(61,220,151,' + (0.35 + 0.6 * hf).toFixed(3) + ')';
       ctx.lineWidth = Math.max(2, p * 0.07);
+      ctx.save();
+      ctx.shadowColor = 'rgba(61,220,151,.8)';
+      ctx.shadowBlur = p * 0.35 * hf;
       ctx.stroke();
+      ctx.restore();
     }
   }
 }
 
-function drawStone(idx, p) {
+/* 单颗棋子；opt 可指定 {color, scale, alpha}（动画 / 残影用） */
+function drawStone(idx, p, opt) {
   var r = (idx / N) | 0, c = idx % N;
-  var x = px(c, p), y = px(r, p), radius = p * 0.42;
-  for (var i = 0; i < G.anims.length; i++) {
-    if (G.anims[i].idx === idx) {
-      var t = Math.min(1, G.anims[i].t);
-      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      radius *= 0.5 + 0.5 * e;
-      break;
-    }
+  var radius = p * 0.42, scale = 1, alpha = 1, drop = 0;
+  var color = (opt && opt.color) ? opt.color : G.board[idx];
+  var an = animOf(idx);
+  if (an) {
+    var tr = placeTransform(clamp01(an.t));
+    scale *= tr.scale; drop += tr.drop;
   }
-  var black = G.board[idx] === BLACK;
+  if (opt) {
+    if (opt.scale != null) scale *= opt.scale;
+    if (opt.alpha != null) alpha *= opt.alpha;
+  }
+  radius *= scale;
+  if (radius <= 0.05 || alpha <= 0.01) return;
+  var x = px(c, p), y = px(r, p) - drop * p;
+  var black = color === BLACK;
   ctx.save();
+  if (alpha < 1) ctx.globalAlpha = alpha;
   ctx.shadowColor = 'rgba(0,0,0,.55)';
-  ctx.shadowBlur = p * 0.15;
+  ctx.shadowBlur = p * 0.15 * (0.3 + 0.7 * (radius / (p * 0.42)));
   ctx.shadowOffsetY = p * 0.045;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 6.2832);
-  var g = ctx.createRadialGradient(x - radius * 0.34, y - radius * 0.4, radius * 0.08, x, y, radius);
+  var g = ctx.createRadialGradient(x - radius * 0.34, y - radius * 0.4, Math.max(0.01, radius * 0.08), x, y, radius);
   if (black) {
     g.addColorStop(0, '#586280'); g.addColorStop(0.5, '#191e30'); g.addColorStop(1, '#05070d');
   } else {
@@ -949,6 +1192,8 @@ function drawStone(idx, p) {
   ctx.fill();
   ctx.restore();
 
+  ctx.save();
+  if (alpha < 1) ctx.globalAlpha = alpha;
   ctx.beginPath();
   ctx.ellipse(x - radius * 0.3, y - radius * 0.34, radius * 0.3, radius * 0.19, -0.6, 0, 6.2832);
   ctx.fillStyle = black ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.8)';
@@ -959,14 +1204,22 @@ function drawStone(idx, p) {
   ctx.strokeStyle = black ? 'rgba(255,255,255,.10)' : 'rgba(80,96,150,.35)';
   ctx.lineWidth = Math.max(1, p * 0.018);
   ctx.stroke();
+  ctx.restore();
 }
 
-function drawLastMark(r, c, p) {
-  var x = px(c, p), y = px(r, p), s = p * 0.16;
+/* 最后一手金色角标；fade = 0~1 淡入（带一点放大弹入） */
+function drawLastMark(r, c, p, fade) {
+  var f = (fade == null) ? 1 : clamp01(fade);
+  if (f <= 0) return;
+  var grow = 0.7 + 0.3 * easeOutBack(f);
+  var x = px(c, p), y = px(r, p), s = p * 0.16 * grow;
   ctx.save();
+  ctx.globalAlpha = f;
   ctx.strokeStyle = LAST_HL;
   ctx.lineWidth = Math.max(1.6, p * 0.055);
   ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(255,196,77,.75)';
+  ctx.shadowBlur = p * 0.22 * f;
   ctx.beginPath();
   ctx.moveTo(x - s, y - s - s * 0.55); ctx.lineTo(x - s, y - s); ctx.lineTo(x - s - s * 0.55, y - s);
   ctx.moveTo(x + s, y - s - s * 0.55); ctx.lineTo(x + s, y - s); ctx.lineTo(x + s + s * 0.55, y - s);
@@ -986,15 +1239,25 @@ function roundRect(c, x, y, w, h, r) {
   c.closePath();
 }
 
-/* ---------- 动画循环 ---------- */
+/* ---------- 动画循环（requestAnimationFrame；无动画时立即停，不空转） ---------- */
 var rafId = 0;
-function tick() {
-  draw();
-  if (G.anims.length || G.winCells) rafId = requestAnimationFrame(tick);
-  else rafId = 0;
+
+/* 是否还需要下一帧：落子动画 / 悔棋残影 / 角标淡入 / 获胜高亮序列 */
+function needsFrames() {
+  var now = performance.now();
+  if (G.anims.length || G.ghosts.length) return true;
+  if (G.lastIdx >= 0 && now - G.markT0 < DUR_MARK + 32) return true;
+  if (G.winCells && G.winCells.length && !G.winDone && now - G.winT0 < (G.winCells.length - 1) * WIN_STEP + WIN_FADE + WIN_TAIL) return true;
+  return false;
 }
+function frame() {
+  rafId = 0;
+  draw();
+  if (needsFrames()) kick();     /* 动画结束后不再排帧 */
+}
+function tick() { frame(); }     /* 兼容旧名 */
 function kick() {
-  if (!rafId) rafId = requestAnimationFrame(tick);
+  if (!rafId) rafId = requestAnimationFrame(frame);
 }
 
 /* =========================================================================
@@ -1006,22 +1269,81 @@ function myTurn() {
   return G.turn !== G.aiColor;
 }
 
+/* ---------- 音效接线 ---------- */
+/* 连子长度：以刚落的这颗为中心，四个方向上的最长连子 */
+function runLength(bd, idx, color) {
+  var r = (idx / N) | 0, c = idx % N, best = 1;
+  for (var d = 0; d < 4; d++) {
+    var dx = DIRS[d][0], dy = DIRS[d][1], cnt = 1, k, rr, cc;
+    for (k = 1; k < 5; k++) { rr = r + k * dx; cc = c + k * dy; if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break; cnt++; }
+    for (k = 1; k < 5; k++) { rr = r - k * dx; cc = c - k * dy; if (rr < 0 || rr >= N || cc < 0 || cc >= N || bd[rr * N + cc] !== color) break; cnt++; }
+    if (cnt > best) best = cnt;
+  }
+  return best;
+}
+
+/* 这一手对「下子方」形成的最大棋型（用于活三 / 冲四提示音） */
+function threatValue(bd, idx, color) {
+  var best = 0;
+  for (var d = 0; d < 4; d++) {
+    var li = CELL_LINES[idx][d], cells = LINES[li], L = cells.length, i;
+    var own = 0, opp = 0;
+    for (i = 0; i < L; i++) {
+      var v = bd[cells[i]];
+      if (v === color) own |= 1 << i;
+      else if (v !== 0) opp |= 1 << i;
+    }
+    var val = classify(own, opp, L);
+    if (val > best) best = val;
+  }
+  return best;
+}
+
+function soundMove(color, run) {
+  if (G.mode === 'ai' && color === G.aiColor) FX.move();
+  else FX.place();
+  /* 连子越多音调越高（FX.step 用大调音阶递进） */
+  if (run >= 2) FX.step(run);
+}
+function soundResult() {
+  if (!G.over) return;
+  if (G.winner === 3) { FX.lose(); return; }
+  if (G.mode === 'ai') { if (G.winner === G.aiColor) FX.lose(); else FX.win(); }
+  else FX.win();
+}
+
 function playMove(idx, color) {
   if (idx < 0 || idx >= N * N) return false;
   if (G.board[idx] !== 0) return false;      // 不能下在已有棋子上
+  /* 用户在「发现未完成对局」提示条还显示时直接落子 = 开新局，收起提示 */
+  var bar = document.getElementById('resumeBar');
+  if (bar && bar.classList.contains('show')) hideResumeBar();
   G.board[idx] = color;
   G.history.push({ idx: idx, color: color });
   G.lastIdx = idx;
-  G.anims.push({ idx: idx, t0: performance.now(), t: 0 });
+  var t0 = performance.now();
+  G.markT0 = t0;
+  G.anims.push({ idx: idx, t0: t0, t: 0, dur: DUR_PLACE });
+  var run = runLength(G.board, idx, color);
+  var wasOver = G.over;
+  var threat = 0;
   if (checkWin(G.board, idx)) {
     G.over = true; G.winner = color;
     G.winCells = findWinLine(G.board, idx);
+    if (G.winCells) G.winCells.sort(function (a, b) { return (a % N - b % N) || (a - b); });  /* 依次高亮：从左到右 */
+    G.winT0 = t0; G.winDone = false;
     G.thinking = false;
   } else if (G.history.length >= N * N) {
     G.over = true; G.winner = 3;
   } else {
     G.turn = OPP[color];
+    threat = threatValue(G.board, idx, color);
   }
+  /* 音效：落子 → 连子递进音 → 活三/冲四提示 → 胜负 */
+  soundMove(color, run);
+  if (threat >= V_OPEN3) FX.alert();
+  if (G.over && !wasOver) soundResult();
+  saveState();
   updateUI();
   draw();
   kick();
@@ -1031,7 +1353,7 @@ function playMove(idx, color) {
 function scheduleAI() {
   if (G.over || G.mode !== 'ai' || G.turn !== G.aiColor) return;
   G.thinking = true;
-  updateUI();
+  updateUI();          /* 轻量提示：状态栏文字「AI 思考中…」，不加转圈动画 */
   setTimeout(function () {
     if (G.over || G.mode !== 'ai' || G.turn !== G.aiColor) { G.thinking = false; updateUI(); return; }
     var t0 = performance.now();
@@ -1062,26 +1384,39 @@ function undo() {
     var guard = 0;
     while (G.history.length && G.turn === G.aiColor && guard++ < 4) popOne();
   }
-  G.over = false; G.winner = 0; G.winCells = null;
+  G.over = false; G.winner = 0; G.winCells = null; G.winDone = false;
   G.anims.length = 0;
+  G.markT0 = performance.now();
+  FX.undo();                 /* 悔棋音效（音调下滑） */
+  saveState();
   updateUI(); draw(); kick();
 }
 
 function popOne() {
   var h = G.history.pop();
   if (!h) return;
+  /* 被撤销的棋子做缩小淡出（150ms），棋盘状态立即正确 */
+  G.ghosts.push({ idx: h.idx, color: h.color, t0: performance.now(), t: 0 });
+  if (G.ghosts.length > 12) G.ghosts.splice(0, G.ghosts.length - 12);
   G.board[h.idx] = 0;
   G.turn = h.color;
   G.lastIdx = G.history.length ? G.history[G.history.length - 1].idx : -1;
+  G.markT0 = performance.now();
 }
 
-function restart() {
+function restart(silent) {
   G.board = new Int8Array(N * N);
   G.history.length = 0;
   G.turn = BLACK;
-  G.over = false; G.winner = 0; G.winCells = null;
-  G.anims.length = 0; G.lastIdx = -1;
+  G.over = false; G.winner = 0; G.winCells = null; G.winDone = false;
+  G.anims.length = 0; G.ghosts.length = 0; G.lastIdx = -1;
+  G.markT0 = -1e9;
   G.thinking = false; G.ms = 0;
+  hideResumeBar();
+  pendingSave = null;
+  /* 只有「显式重新开始」才清档；加载/内部重置（silent）不动存档，
+     否则 init() 会先把存档清掉，导致下次打开永远看不到「继续上局」。 */
+  if (!silent) { Save.clear('gobang'); FX.click(); }
   updateUI(); draw(); kick();
 }
 
@@ -1100,12 +1435,16 @@ function hitTest(clientX, clientY) {
   return r * N + c;
 }
 
-function cellToClient(idx) {
+/* 支持两种调用：cellToClient(idx) 或 cellToClient(col, row) */
+function cellToClient(a, b) {
   var rect = canvas.getBoundingClientRect();
   var p = rect.width / (N - 1 + 2 * PAD);
+  var col, row;
+  if (b === undefined || b === null) { col = a % N; row = (a / N) | 0; }
+  else { col = a; row = b; }
   return {
-    x: rect.left + ((idx % N) + PAD) * p,
-    y: rect.top + (((idx / N) | 0) + PAD) * p
+    x: rect.left + (col + PAD) * p,
+    y: rect.top + (row + PAD) * p
   };
 }
 
@@ -1113,7 +1452,7 @@ function onPointer(e) {
   if (!myTurn()) return;
   var idx = hitTest(e.clientX, e.clientY);
   if (idx < 0) return;
-  if (G.board[idx] !== 0) return;
+  if (G.board[idx] !== 0) { FX.bad(); return; }    /* 点已有棋子：无效落子提示音 */
   if (e.cancelable) e.preventDefault();
   playMove(idx, G.turn);
   if (!G.over && G.mode === 'ai' && G.turn === G.aiColor) scheduleAI();
@@ -1180,10 +1519,143 @@ function syncDiffEnabled() {
   document.getElementById('segDiff').style.opacity = G.mode === 'ai' ? '1' : '.55';
 }
 
+/* =========================================================================
+   11.5 存档：未打完的对局保留（Save.write('gobang', {...})）
+   ========================================================================= */
+var DIFF_NAME = { easy: '简单', normal: '普通', hard: '困难' };
+var SAVE_KEY = 'gobang';
+var pendingSave = null;
+
+function snapshot() {
+  return {
+    board: Array.prototype.slice.call(G.board),   /* 长度 225，0/1/2 */
+    history: G.history.map(function (h) { return { idx: h.idx, color: h.color }; }),
+    turn: G.turn,
+    mode: G.mode,
+    diff: G.diff,
+    over: !!G.over,
+    winner: G.winner,
+    lastIdx: G.lastIdx,
+    ts: Date.now()
+  };
+}
+
+/* 每次落子 / 悔棋后调用；对局结束或空盘则清档 */
+function saveState() {
+  if (G.over || !G.history.length) { Save.clear(SAVE_KEY); return null; }
+  var s = snapshot();
+  Save.write(SAVE_KEY, s);
+  return s;
+}
+
+function hideResumeBar() {
+  var bar = document.getElementById('resumeBar');
+  if (bar) { bar.classList.remove('show'); bar.hidden = true; }
+  pendingSave = null;      /* 提示条与待恢复存档保持同步 */
+}
+function showResumeBar(s) {
+  var bar = document.getElementById('resumeBar');
+  if (!bar) return;
+  var modeTxt = (s.mode === 'ai') ? ('人机对战（' + (DIFF_NAME[s.diff] || '普通') + '）') : '双人同屏';
+  document.getElementById('resumeText').innerHTML =
+    '<b>发现未完成的对局</b> · 已下 ' + s.history.length + ' 手 · ' + modeTxt;
+  bar.hidden = false;
+  bar.classList.add('show');
+}
+
+/* 加载时检查存档；有未完成对局则显示提示条 */
+function checkSave() {
+  var s = Save.read(SAVE_KEY);
+  pendingSave = null;
+  if (!s || s.over !== false || !s.history || !s.history.length ||
+      !s.board || s.board.length !== N * N) {
+    hideResumeBar();
+    return false;
+  }
+  pendingSave = s;
+  showResumeBar(s);
+  return true;
+}
+
+/* 恢复到存档局面（完整重建状态） */
+function applySave(s) {
+  var i, n = 0;
+  G.board = new Int8Array(N * N);
+  for (i = 0; i < N * N; i++) if (s.board[i]) { G.board[i] = s.board[i]; n++; }
+  /* 优先按存档的落子顺序恢复 history（悔棋顺序才对）；不一致则退回棋盘扫描 */
+  var hist = [];
+  var seen = {};
+  if (s.history && s.history.length === n) {
+    for (i = 0; i < s.history.length; i++) {
+      var h = s.history[i];
+      if (!h || !(h.idx >= 0 && h.idx < N * N) || seen[h.idx]) { hist = []; break; }
+      if (G.board[h.idx] !== h.color) { hist = []; break; }
+      seen[h.idx] = 1;
+      hist.push({ idx: h.idx, color: h.color });
+    }
+  }
+  if (!hist.length) {
+    for (i = 0; i < N * N; i++) if (G.board[i]) hist.push({ idx: i, color: G.board[i] });
+  }
+  G.history.length = 0;
+  for (i = 0; i < hist.length; i++) G.history.push(hist[i]);
+
+  G.mode = (s.mode === 'pvp') ? 'pvp' : 'ai';
+  G.diff = DIFF_NAME[s.diff] ? s.diff : 'hard';
+  G.turn = (s.turn === BLACK || s.turn === WHITE) ? s.turn : ((hist.length % 2 === 0) ? BLACK : WHITE);
+  G.lastIdx = (s.lastIdx >= 0 && s.lastIdx < N * N && G.board[s.lastIdx]) ? s.lastIdx
+    : (hist.length ? hist[hist.length - 1].idx : -1);
+  G.over = false; G.winner = 0; G.winCells = null; G.winDone = false;
+  G.anims.length = 0; G.ghosts.length = 0;
+  G.thinking = false; G.ms = 0;
+  G.markT0 = performance.now();
+  /* 防御：万一存档里其实是终局局面，也把胜负恢复出来 */
+  for (i = 0; i < N * N; i++) {
+    if (G.board[i] && checkWin(G.board, i)) {
+      G.over = true; G.winner = G.board[i]; G.winCells = findWinLine(G.board, i);
+      G.winT0 = performance.now(); G.winDone = true;
+      break;
+    }
+  }
+  setSeg(document.getElementById('segMode'), 'data-mode', G.mode);
+  setSeg(document.getElementById('segDiff'), 'data-diff', G.diff);
+  syncDiffEnabled();
+  hideResumeBar();
+  updateUI(); draw(); kick();
+}
+
+function resumeGame() {
+  var s = pendingSave || Save.read(SAVE_KEY);
+  if (!s || !s.board) { hideResumeBar(); return false; }
+  applySave(s);
+  pendingSave = null;
+  FX.click();
+  return true;
+}
+
+/* 提示条上的「重新开始」：清档并开新局 */
+function discardSave() {
+  Save.clear(SAVE_KEY);
+  pendingSave = null;
+  hideResumeBar();
+  restart();
+}
+
+function syncSound() {
+  var b = document.getElementById('btnSound');
+  if (!b) return;
+  b.textContent = FX.on() ? '🔊' : '🔇';
+  b.title = FX.on() ? '音效已开（点击静音）' : '音效已关（点击开启）';
+  b.setAttribute('aria-label', FX.on() ? '音效已开' : '音效已关');
+  b.classList.toggle('off', !FX.on());
+}
+
 function init() {
   layout();
   buildShapes();
   syncDiffEnabled();
+  FX.init();                 /* 音效：读取开关持久化 + 首次交互解锁 */
+  syncSound();
 
   var segMode = document.getElementById('segMode');
   var segDiff = document.getElementById('segDiff');
@@ -1191,22 +1663,35 @@ function init() {
     var b = e.target.closest('button'); if (!b) return;
     var m = b.getAttribute('data-mode');
     if (m === G.mode) return;
-    G.mode = m; setSeg(segMode, 'data-mode', m); syncDiffEnabled(); restart();
+    G.mode = m; setSeg(segMode, 'data-mode', m); syncDiffEnabled();
+    FX.click();                             /* 切换模式音效 */
+    restart(true);
   });
   segDiff.addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b || b.disabled) return;
     var d = b.getAttribute('data-diff');
     if (d === G.diff) return;
-    G.diff = d; setSeg(segDiff, 'data-diff', d); updateUI();
+    G.diff = d; setSeg(segDiff, 'data-diff', d);
+    FX.click();                             /* 切换难度音效 */
+    updateUI();
   });
   document.getElementById('btnUndo').addEventListener('click', undo);
-  document.getElementById('btnRestart').addEventListener('click', restart);
+  document.getElementById('btnRestart').addEventListener('click', function () { restart(); });
+  document.getElementById('btnSound').addEventListener('click', function () {
+    var on = !FX.on();
+    FX.setEnabled(on);
+    syncSound();
+    if (on) FX.click();                     /* 只在「打开」时给一声反馈 */
+  });
+  document.getElementById('btnResume').addEventListener('click', resumeGame);
+  document.getElementById('btnNewGame').addEventListener('click', discardSave);
   canvas.addEventListener('pointerdown', onPointer, { passive: false });
   window.addEventListener('resize', function () { layout(); draw(); });
   window.addEventListener('orientationchange', function () {
     setTimeout(function () { layout(); draw(); }, 150);
   });
-  restart();
+  restart(true);
+  checkSave();               /* 加载时若有未完成存档 -> 显示「继续上局」提示 */
 }
 
 /* =========================================================================
@@ -1269,14 +1754,16 @@ window.GobangAPI = {
     setSeg(document.getElementById('segDiff'), 'data-diff', d);
   },
   setBoard: function (arr) {
-    restart();
+    restart(true);
     var i, n = 0;
     for (i = 0; i < N * N; i++) if (arr[i]) { G.board[i] = arr[i]; G.history.push({ idx: i, color: arr[i] }); n++; }
     G.lastIdx = n ? G.history[n - 1].idx : -1;
     G.turn = (n % 2 === 0) ? BLACK : WHITE;
+    G.markT0 = performance.now();
     for (i = 0; i < N * N; i++) {
       if (G.board[i] && checkWin(G.board, i)) {
-        G.over = true; G.winner = G.board[i]; G.winCells = findWinLine(G.board, i); break;
+        G.over = true; G.winner = G.board[i]; G.winCells = findWinLine(G.board, i);
+        G.winT0 = performance.now(); G.winDone = true; break;
       }
     }
     updateUI(); draw();
@@ -1287,7 +1774,44 @@ window.GobangAPI = {
   layout: layout,
   draw: draw,
   canvasRect: function () { return canvas.getBoundingClientRect(); },
-  _classify: classify
+  _classify: classify,
+
+  /* ---------- 动画 / 音效 / 存档（测试与调优用，不影响对局） ---------- */
+  aconst: {
+    PLACE: DUR_PLACE, GHOST: DUR_GHOST, MARK: DUR_MARK,
+    WIN_STEP: WIN_STEP, WIN_FADE: WIN_FADE, WIN_TAIL: WIN_TAIL
+  },
+  placeTransform: placeTransform,
+  drawCount: function () { return G.drawCount; },
+  rafActive: function () { return rafId !== 0; },
+  needsFrames: needsFrames,
+  /* 手动驱动一帧（等价于 rAF 回调；无头环境里 rAF 不派发时测试用） */
+  pump: function () { frame(); return rafId; },
+  animInfo: function () {
+    return {
+      anims: G.anims.map(function (a) { return { idx: a.idx, t: a.t, dur: a.dur || DUR_PLACE }; }),
+      ghosts: G.ghosts.map(function (g) { return { idx: g.idx, color: g.color, t: g.t }; }),
+      winCells: G.winCells ? G.winCells.slice() : null,
+      winDone: G.winDone,
+      markT0: G.markT0,
+      lastIdx: G.lastIdx,
+      rafId: rafId,
+      drawCount: G.drawCount
+    };
+  },
+  snapshot: snapshot,
+  save: saveState,
+  checkSave: checkSave,
+  resumeGame: resumeGame,
+  discardSave: discardSave,
+  saveRead: function () { return Save.read(SAVE_KEY); },
+  saveClear: function () { Save.clear(SAVE_KEY); },
+  soundOn: function () { return FX.on(); },
+  toggleSound: function () { FX.setEnabled(!FX.on()); syncSound(); return FX.on(); },
+  soundButton: function () { return document.getElementById('btnSound'); },
+  resumeBar: function () { return document.getElementById('resumeBar'); },
+  runLength: runLength,
+  threatValue: threatValue
 };
 
 })();
