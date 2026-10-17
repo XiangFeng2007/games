@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>数独 · Sudoku</title>
+<meta name="game:icon" content="🔢">
+<meta name="game:desc" content="经典数独，三档难度。自动生成唯一解题目，支持候选数与智能提示。">
+<meta name="game:tags" content="益智,数字,单人,手机">
+<meta name="game:color" content="#a06bff">
+<meta name="game:badge" content="new">
+<style>
+:root{
+  --bg:#0b1020;
+  --panel:rgba(255,255,255,.055);
+  --panel-line:rgba(255,255,255,.12);
+  --text:#e8ecff;
+  --muted:#8f9ac0;
+  --accent:#6ea8ff;
+  --accent2:#a06bff;
+  --ok:#3ddc97;
+  --bad:#ff5d6c;
+  --warn:#ffc44d;
+  --given:#e8ecff;
+  --user:#6ea8ff;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 640px at 12% -12%, #1c2a55 0%, transparent 60%),
+    radial-gradient(900px 560px at 110% 8%, #3a1f5c 0%, transparent 55%),
+    linear-gradient(180deg,var(--bg),#131a33);
+  color:var(--text);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;min-height:100dvh;
+  -webkit-tap-highlight-color:transparent;
+}
+#app{max-width:560px;margin:0 auto;padding:20px 14px calc(24px + env(safe-area-inset-bottom))}
+
+header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.logo{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:800}
+.logo .mark{
+  width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:18px;
+  background:linear-gradient(135deg,#a06bff,#6ea8ff);
+  box-shadow:0 6px 18px rgba(160,107,255,.35)
+}
+.spacer{flex:1}
+.icon-btn{
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--panel-line);
+  background:var(--panel);color:var(--text);cursor:pointer;font-size:15px;
+  display:grid;place-items:center;transition:.15s
+}
+.icon-btn:hover{background:rgba(255,255,255,.12)}
+.icon-btn.off{opacity:.45}
+
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.seg{display:flex;background:var(--panel);border:1px solid var(--panel-line);border-radius:11px;padding:3px}
+.seg button{
+  border:0;background:transparent;color:var(--muted);cursor:pointer;
+  padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;transition:.15s;font-family:inherit
+}
+.seg button.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.btn{
+  border:1px solid var(--panel-line);background:var(--panel);color:var(--text);
+  padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;
+  font-family:inherit;transition:.15s
+}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:0;color:#fff}
+
+.status{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--panel-line);border-radius:12px;
+  padding:10px 13px;margin-bottom:12px;font-size:13px
+}
+.chip{display:flex;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+.chip b{font-size:15px}
+.chip .k{color:var(--muted);font-size:12px}
+
+/* ---------- 棋盘 ---------- */
+#board{
+  display:grid;
+  grid-template-columns:repeat(9,1fr);
+  gap:0;
+  margin:0 auto;
+  background:rgba(0,0,0,.3);
+  border:2px solid rgba(255,255,255,.22);
+  border-radius:12px;
+  overflow:hidden;
+  width:100%;
+  max-width:452px;
+  aspect-ratio:1;
+  user-select:none;
+  touch-action:manipulation;
+}
+.cell{
+  position:relative;
+  display:grid;place-items:center;
+  border-right:1px solid rgba(255,255,255,.08);
+  border-bottom:1px solid rgba(255,255,255,.08);
+  font-size:calc(var(--fs,22px));
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+  cursor:pointer;
+  transition:background .12s;
+  background:rgba(255,255,255,.015)
+}
+/* 3×3 宫粗线 */
+.cell[data-c="2"],.cell[data-c="5"]{border-right:2px solid rgba(255,255,255,.28)}
+.cell[data-r="2"],.cell[data-r="5"]{border-bottom:2px solid rgba(255,255,255,.28)}
+.cell:nth-child(9n){border-right:0}
+.cell:nth-child(n+73){border-bottom:0}
+
+.cell.given{color:var(--given);background:rgba(255,255,255,.045);font-weight:700;cursor:default}
+.cell.user{color:var(--user)}
+.cell.sel{background:rgba(110,168,255,.28)}
+.cell.peer{background:rgba(110,168,255,.1)}
+.cell.same{background:rgba(160,107,255,.2)}
+.cell.conflict{color:var(--bad);background:rgba(255,93,108,.22)}
+.cell.hint{animation:hintPulse .7s ease-in-out 2}
+@keyframes hintPulse{0%,100%{background:rgba(61,220,151,.1)}50%{background:rgba(61,220,151,.45)}}
+
+/* 候选数显示 */
+.cell .cands{
+  position:absolute;inset:1px;
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
+  font-size:calc(var(--fs,22px) * .38);font-weight:500;color:var(--muted);
+  pointer-events:none
+}
+.cell .cands span{display:grid;place-items:center;line-height:1}
+
+/* 数字输入动画 */
+@keyframes numIn{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
+.cell.fx-in{animation:numIn .2s ease-out}
+
+/* ---------- 数字键盘 ---------- */
+#pad{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+  margin:14px auto 0;max-width:452px
+}
+#pad button{
+  aspect-ratio:1.55;
+  border-radius:11px;border:1px solid var(--panel-line);
+  background:var(--panel);color:var(--text);
+  font-size:22px;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:.12s;position:relative
+}
+#pad button:hover{background:rgba(255,255,255,.13)}
+#pad button:active{transform:scale(.95)}
+#pad button.done{opacity:.32}
+#pad button .cnt{
+  position:absolute;right:5px;bottom:3px;font-size:10px;font-weight:500;color:var(--muted)
+}
+#pad button.tool{font-size:15px}
+#pad button.eraser{font-size:19px}
+
+/* ---------- 结果 ---------- */
+.overlay{
+  position:fixed;inset:0;display:none;place-items:center;padding:20px;
+  background:rgba(6,10,24,.8);backdrop-filter:blur(6px);z-index:50
+}
+.overlay.show{display:grid}
+.card{
+  background:linear-gradient(180deg,#1a2246,#141a34);
+  border:1px solid var(--panel-line);border-radius:18px;
+  padding:26px 24px;max-width:360px;width:100%;text-align:center;
+  box-shadow:0 24px 60px rgba(0,0,0,.6)
+}
+.card .big{font-size:46px;line-height:1;margin-bottom:8px}
+.card h2{margin:0 0 6px;font-size:21px}
+.card h2.win{color:var(--ok)}
+.card p{color:var(--muted);font-size:13px;margin:0 0 18px;line-height:1.7}
+.card .row{display:flex;gap:9px}
+.card .row .btn{flex:1 1 0;padding:10px}
+.stats{display:flex;gap:8px;justify-content:center;margin-bottom:16px;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:8px 14px;min-width:76px}
+.stat .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;color:var(--muted);margin-top:2px}
+
+.hint{margin-top:14px;text-align:center;color:var(--muted);font-size:12px;line-height:1.9}
+.hint kbd{
+  background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.14);
+  border-radius:5px;padding:1px 6px;font-family:Consolas,monospace;font-size:11.5px
+}
+
+@media (max-width:430px){
+  #app{padding:14px 10px calc(18px + env(safe-area-inset-bottom))}
+  .logo{font-size:16px}
+  .logo .mark{width:28px;height:28px;font-size:15px;border-radius:8px}
+  .seg button{padding:6px 9px;font-size:12px}
+  .btn{padding:7px 10px;font-size:12px}
+  #pad{gap:6px}
+  #pad button{font-size:19px;border-radius:9px}
+  #pad button.tool{font-size:13px}
+  .status{padding:8px 10px;font-size:12px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="logo"><span class="mark">🔢</span><span>数独</span></div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="btnSound" title="音效开关">🔊</button>
+  </header>
+
+  <div class="bar">
+    <div class="seg" id="diffs">
+      <button data-d="easy">简单</button>
+      <button data-d="normal" class="on">普通</button>
+      <button data-d="hard">困难</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btnNew">新题目</button>
+  </div>
+
+  <div class="status">
+    <div class="chip"><span class="k">难度</span><b id="diffName">普通</b></div>
+    <div class="chip"><span class="k">已填</span><b id="filled">0</b><span class="k">/81</span></div>
+    <div class="chip"><span class="k">用时</span><b id="timer">0</b><span class="k">秒</span></div>
+    <div class="spacer"></div>
+    <div class="chip"><span class="k">错误</span><b id="errors">0</b></div>
+  </div>
+
+  <div id="board"></div>
+
+  <div id="pad">
+    <button data-n="1">1</button>
+    <button data-n="2">2</button>
+    <button data-n="3">3</button>
+    <button data-n="4">4</button>
+    <button data-n="5">5</button>
+    <button data-n="6">6</button>
+    <button data-n="7">7</button>
+    <button data-n="8">8</button>
+    <button data-n="9">9</button>
+    <button class="tool eraser" id="btnErase" title="擦除">⌫</button>
+    <button class="tool" id="btnCand" title="候选数模式">✏️ 候选</button>
+    <button class="tool" id="btnHint" title="提示一格">💡 提示</button>
+    <button class="tool" id="btnUndo" title="撤销">↶ 撤销</button>
+    <button class="tool" id="btnCheck" title="检查错误">🔍 检查</button>
+  </div>
+
+  <p class="hint">
+    点格子选中，再用下方数字键填入　·　<kbd>1</kbd>–<kbd>9</kbd> 输入 · <kbd>Delete</kbd> 擦除<br>
+    同一数字会高亮，冲突会标红
+  </p>
+</div>
+
+<!-- 结果 -->
+<div class="overlay" id="over">
+  <div class="card">
+    <div class="big">🎉</div>
+    <h2 class="win">恭喜完成！</h2>
+    <div class="stats">
+      <div class="stat"><div class="v" id="ovTime">0</div><div class="l">用时（秒）</div></div>
+      <div class="stat"><div class="v" id="ovDiff">普通</div><div class="l">难度</div></div>
+      <div class="stat"><div class="v" id="ovBest">—</div><div class="l">最佳</div></div>
+    </div>
+    <p id="ovText"></p>
+    <div class="row">
+      <button class="btn primary" id="ovAgain">下一题</button>
+      <button class="btn" id="ovClose">看看棋盘</button>
+    </div>
+  </div>
+</div>
+
+<!-- 继续上局 -->
+<div class="overlay" id="resume">
+  <div class="card">
+    <div class="big">💾</div>
+    <h2>发现未完成的对局</h2>
+    <p id="resumeText"></p>
+    <div class="row">
+      <button class="btn primary" id="resumeYes">继续上局</button>
+      <button class="btn" id="resumeNo">重新开始</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   FX / Save —— 统一模块
+   ========================================================================= */
+/* =========================================================================
+   FX —— 统一音效 + 动画模块（各游戏内联同一份，保持手感一致）
+   -------------------------------------------------------------------------
+   设计要点：
+   · 纯 WebAudio 合成，无音频文件，离线可用
+   · 支持「音调改变」：tone() 可指定频率，slide() 可做上滑/下滑
+   · 浏览器要求首次交互后才能出声，已自动解锁
+   · 音效开关持久化到 localStorage
+   ========================================================================= */
+var FX = (function () {
+  var ctx = null;
+  var enabled = true;
+  var VOL = 0.07;
+
+  function ac() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  /* 单音：freq 频率(Hz) · dur 时长(s) · type 波形 · vol 音量 · when 延迟(s) */
+  function tone(freq, dur, type, vol, when) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime + (when || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 滑音：从 f1 滑到 f2 —— 「音调改变」的核心效果 */
+  function slide(f1, f2, dur, type, vol) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 音阶：按度数取频率，用于「越高越亮」的递进音效 */
+  function deg(base, step) {
+    // 大调音阶：1 2 3 4 5 6 7 8(高八度)
+    var ratio = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2];
+    var i = Math.abs(step | 0) % 8;
+    var oct = Math.floor(Math.abs(step | 0) / 8);
+    return base * ratio[i] * Math.pow(2, oct);
+  }
+
+  return {
+    tone: tone,
+    slide: slide,
+    degree: deg,
+    unlock: function () { ac(); },
+    on: function () { return enabled; },
+    setEnabled: function (v) {
+      enabled = !!v;
+      try { localStorage.setItem('games.fx.sound', enabled ? '1' : '0'); } catch (e) {}
+    },
+    init: function () {
+      try {
+        var s = localStorage.getItem('games.fx.sound');
+        if (s === '0') enabled = false;
+      } catch (e) {}
+      var unlock = function () { ac(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+        window.addEventListener(ev, unlock, { once: true, passive: true });
+      });
+      return enabled;
+    },
+
+    /* ---- 通用音效 ---- */
+    click:  function () { tone(620, 0.05, 'square', 0.05); },
+    move:   function () { tone(520, 0.05, 'sine', 0.05); },
+    place:  function () { slide(300, 420, 0.07, 'square', 0.055); },
+    /* 递进音：step 越大音调越高（连击 / 合成 / 连中） */
+    step:   function (n) {
+      var s = Math.min(Math.abs(n | 0), 12);
+      tone(deg(440, s), 0.09, 'triangle', 0.07);
+      tone(deg(440, s) * 2, 0.06, 'sine', 0.035, 0.02);
+    },
+    good:   function () { slide(520, 780, 0.1, 'triangle', 0.07); },
+    bad:    function () { slide(240, 140, 0.16, 'sawtooth', 0.07); },
+    hit:    function () { slide(700, 1100, 0.09, 'square', 0.07); },
+    miss:   function () { tone(180, 0.1, 'sine', 0.045); },
+    explode:function () {
+      slide(420, 90, 0.28, 'sawtooth', 0.08);
+      tone(120, 0.2, 'square', 0.05, 0.02);
+    },
+    win:    function () {
+      [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.07, i * 0.09); });
+    },
+    lose:   function () {
+      [392, 330, 262, 196].forEach(function (f, i) { tone(f, 0.24, 'sawtooth', 0.06, i * 0.13); });
+    },
+    undo:   function () { slide(500, 320, 0.1, 'sine', 0.05); },
+    alert:  function () { tone(880, 0.08, 'square', 0.06); tone(880, 0.08, 'square', 0.06, 0.12); }
+  };
+})();
+
+/* =========================================================================
+   Save —— 未打完的对局存档（各游戏把状态序列化后存这里，下次可继续）
+   ========================================================================= */
+var Save = (function () {
+  var PREFIX = 'games.';
+  return {
+    write: function (name, obj) {
+      try { localStorage.setItem(PREFIX + name + '.save', JSON.stringify(obj)); } catch (e) {}
+    },
+    read: function (name) {
+      try {
+        var s = localStorage.getItem(PREFIX + name + '.save');
+        return s ? JSON.parse(s) : null;
+      } catch (e) { return null; }
+    },
+    clear: function (name) {
+      try { localStorage.removeItem(PREFIX + name + '.save'); } catch (e) {}
+    }
+  };
+})();
+
+/* =========================================================================
+   数独
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  var N = 9, BOX = 3;
+  var DIFFS = {
+    easy:   { holes: 40, name: '简单' },
+    normal: { holes: 48, name: '普通' },
+    hard:   { holes: 56, name: '困难' }
+  };
+  var KEY_SAVE = 'games.sudoku.save';
+  var KEY_BEST = 'games.sudoku.best';
+
+  var S = {
+    diff: 'normal',
+    puzzle: [],       // 初始题目（0 表示空）
+    solution: [],     // 完整解
+    grid: [],         // 当前填入（含初始）
+    cands: [],        // 候选数 [r][c] = Set
+    given: [],        // [r][c] = 是否题目给定
+    sel: null,        // 当前选中 {r,c}
+    candMode: false,  // 候选数模式
+    errors: 0,
+    startTime: 0,
+    elapsed: 0,
+    timerId: null,
+    over: false,
+    history: []       // 撤销栈
+  };
+
+  var boardEl;
+
+  /* =========== 数独生成器 =========== */
+
+  function emptyGrid() {
+    var g = [], r, c;
+    for (r = 0; r < N; r++) {
+      var row = [];
+      for (c = 0; c < N; c++) row.push(0);
+      g.push(row);
+    }
+    return g;
+  }
+
+  function isValid(g, r, c, v) {
+    for (var i = 0; i < N; i++) {
+      if (g[r][i] === v) return false;
+      if (g[i][c] === v) return false;
+    }
+    var br = Math.floor(r / BOX) * BOX, bc = Math.floor(c / BOX) * BOX;
+    for (var rr = br; rr < br + BOX; rr++)
+      for (var cc = bc; cc < bc + BOX; cc++)
+        if (g[rr][cc] === v) return false;
+    return true;
+  }
+
+  /** 随机填充完整盘面（回溯法） */
+  function generateFull() {
+    var g = emptyGrid();
+
+    function fill(pos) {
+      if (pos === 81) return true;
+      var r = Math.floor(pos / 9), c = pos % 9;
+      var nums = [1,2,3,4,5,6,7,8,9];
+      // 洗牌
+      for (var i = nums.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = nums[i]; nums[i] = nums[j]; nums[j] = t;
+      }
+      for (var k = 0; k < 9; k++) {
+        if (isValid(g, r, c, nums[k])) {
+          g[r][c] = nums[k];
+          if (fill(pos + 1)) return true;
+          g[r][c] = 0;
+        }
+      }
+      return false;
+    }
+
+    fill(0);
+    return g;
+  }
+
+  /** 统计解的数量（最多数到 limit，用于唯一性校验） */
+  function countSolutions(g, limit) {
+    limit = limit || 2;
+    var count = 0;
+    var work = g.map(function (row) { return row.slice(); });
+
+    function solve() {
+      if (count >= limit) return;
+      // 找空格（选候选最少的，加速）
+      var best = null, bestCands = null;
+      for (var r = 0; r < N; r++) {
+        for (var c = 0; c < N; c++) {
+          if (work[r][c] !== 0) continue;
+          var cands = [];
+          for (var v = 1; v <= 9; v++) if (isValid(work, r, c, v)) cands.push(v);
+          if (!best || cands.length < bestCands.length) {
+            best = [r, c]; bestCands = cands;
+            if (cands.length === 0) { return; }   // 死路
+          }
+        }
+      }
+      if (!best) { count++; return; }            // 填满了
+
+      var r0 = best[0], c0 = best[1];
+      for (var i = 0; i < bestCands.length; i++) {
+        work[r0][c0] = bestCands[i];
+        solve();
+        work[r0][c0] = 0;
+        if (count >= limit) return;
+      }
+    }
+
+    solve();
+    return count;
+  }
+
+  /** 生成题目：从完整盘面挖洞，保证唯一解 */
+  function generatePuzzle(holes) {
+    var full = generateFull();
+    var puzzle = full.map(function (row) { return row.slice(); });
+
+    // 所有位置打乱
+    var pos = [];
+    for (var i = 0; i < 81; i++) pos.push(i);
+    for (var k = pos.length - 1; k > 0; k--) {
+      var j = Math.floor(Math.random() * (k + 1));
+      var t = pos[k]; pos[k] = pos[j]; pos[j] = t;
+    }
+
+    var removed = 0;
+    for (var p = 0; p < pos.length && removed < holes; p++) {
+      var idx = pos[p];
+      var r = Math.floor(idx / 9), c = idx % 9;
+      if (puzzle[r][c] === 0) continue;
+      var bak = puzzle[r][c];
+      puzzle[r][c] = 0;
+      // 唯一性校验
+      if (countSolutions(puzzle, 2) !== 1) {
+        puzzle[r][c] = bak;    // 不唯一，恢复
+      } else {
+        removed++;
+      }
+    }
+
+    return { puzzle: puzzle, solution: full, holes: removed };
+  }
+
+  /* =========== 游戏逻辑 =========== */
+
+  function newGame(diff) {
+    if (diff) S.diff = diff;
+    var d = DIFFS[S.diff];
+
+    var gen = generatePuzzle(d.holes);
+
+    S.puzzle = gen.puzzle;
+    S.solution = gen.solution;
+    S.grid = gen.puzzle.map(function (row) { return row.slice(); });
+    S.given = gen.puzzle.map(function (row) {
+      return row.map(function (v) { return v !== 0; });
+    });
+    S.cands = [];
+    for (var r = 0; r < N; r++) {
+      var row = [];
+      for (var c = 0; c < N; c++) row.push([]);
+      S.cands.push(row);
+    }
+
+    S.sel = null;
+    S.candMode = false;
+    S.errors = 0;
+    S.elapsed = 0;
+    S.startTime = 0;
+    S.over = false;
+    S.history = [];
+    stopTimer();
+
+    buildBoard();
+    render();
+    updateStatus();
+    Save.clear('sudoku');
+    FX.click();
+  }
+
+  function buildBoard() {
+    boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        var el = document.createElement('div');
+        el.className = 'cell';
+        el.dataset.r = r;
+        el.dataset.c = c;
+        frag.appendChild(el);
+      }
+    }
+    boardEl.appendChild(frag);
+    fitFont();
+  }
+
+  function fitFont() {
+    if (!boardEl) return;
+    var w = boardEl.clientWidth || 400;
+    var fs = Math.max(13, Math.round(w / 9 * 0.62));
+    boardEl.style.setProperty('--fs', fs + 'px');
+  }
+
+  function cellEl(r, c) { return boardEl.children[r * 9 + c]; }
+
+  function render() {
+    var sel = S.sel;
+    var selVal = sel ? S.grid[sel.r][sel.c] : 0;
+
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        var el = cellEl(r, c);
+        var v = S.grid[r][c];
+        el.className = 'cell';
+        el.innerHTML = '';
+
+        if (S.given[r][c]) {
+          el.classList.add('given');
+        } else if (v !== 0) {
+          el.classList.add('user');
+        }
+
+        // 冲突检测
+        if (v !== 0 && !S.given[r][c] && v !== S.solution[r][c]) {
+          el.classList.add('conflict');
+        }
+
+        // 选中与关联高亮
+        if (sel) {
+          if (sel.r === r && sel.c === c) el.classList.add('sel');
+          else if (sel.r === r || sel.c === c ||
+                   (Math.floor(sel.r / 3) === Math.floor(r / 3) &&
+                    Math.floor(sel.c / 3) === Math.floor(c / 3))) {
+            el.classList.add('peer');
+          }
+          if (selVal && v === selVal && !(sel.r === r && sel.c === c)) {
+            el.classList.add('same');
+          }
+        }
+
+        // 内容
+        if (v !== 0) {
+          el.textContent = v;
+        } else if (S.cands[r][c] && S.cands[r][c].length) {
+          var box = document.createElement('div');
+          box.className = 'cands';
+          for (var n = 1; n <= 9; n++) {
+            var sp = document.createElement('span');
+            sp.textContent = S.cands[r][c].indexOf(n) >= 0 ? n : '';
+            box.appendChild(sp);
+          }
+          el.appendChild(box);
+        }
+      }
+    }
+    updatePadCounts();
+  }
+
+  /** 数字键上显示还剩几个没填 */
+  function updatePadCounts() {
+    var used = {};
+    for (var n = 1; n <= 9; n++) used[n] = 0;
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        var v = S.grid[r][c];
+        if (v) used[v] = (used[v] || 0) + 1;
+      }
+    }
+    var bs = document.querySelectorAll('#pad button[data-n]');
+    for (var i = 0; i < bs.length; i++) {
+      var n2 = +bs[i].dataset.n;
+      var left = 9 - used[n2];
+      bs[i].classList.toggle('done', left <= 0);
+      var cnt = bs[i].querySelector('.cnt');
+      if (!cnt) {
+        cnt = document.createElement('span');
+        cnt.className = 'cnt';
+        bs[i].appendChild(cnt);
+      }
+      cnt.textContent = left > 0 ? left : '';
+    }
+  }
+
+  function updateStatus() {
+    var filled = 0;
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) if (S.grid[r][c]) filled++;
+    document.getElementById('filled').textContent = filled;
+    document.getElementById('timer').textContent = S.elapsed;
+    document.getElementById('errors').textContent = S.errors;
+    document.getElementById('diffName').textContent = DIFFS[S.diff].name;
+    var best = readBest();
+    // 最佳显示在结算里，这里不用
+  }
+
+  /* =========== 计时 =========== */
+  function startTimer() {
+    if (S.timerId) return;
+    S.startTime = Date.now() - S.elapsed * 1000;
+    S.timerId = setInterval(function () {
+      S.elapsed = Math.floor((Date.now() - S.startTime) / 1000);
+      document.getElementById('timer').textContent = S.elapsed;
+    }, 500);
+  }
+  function stopTimer() {
+    if (S.timerId) { clearInterval(S.timerId); S.timerId = null; }
+  }
+
+  /* =========== 输入 =========== */
+
+  function selectCell(r, c) {
+    S.sel = { r: r, c: c };
+    render();
+    if (!S.given[r][c]) { startTimer(); FX.click(); }
+  }
+
+  function inputNumber(n) {
+    if (S.over) return;
+    if (!S.sel) return;
+    var r = S.sel.r, c = S.sel.c;
+    if (S.given[r][c]) return;
+
+    startTimer();
+
+    // 候选数模式
+    if (S.candMode) {
+      var arr = S.cands[r][c];
+      var i = arr.indexOf(n);
+      if (i >= 0) arr.splice(i, 1); else arr.push(n);
+      render();
+      FX.click();
+      saveGame();
+      return;
+    }
+
+    // 记录撤销
+    S.history.push({ r: r, c: c, prev: S.grid[r][c], prevCands: S.cands[r][c].slice() });
+    if (S.history.length > 100) S.history.shift();
+
+    if (S.grid[r][c] === n) {
+      // 再按一次相同数字 = 擦除
+      S.grid[r][c] = 0;
+      FX.undo();
+    } else {
+      var correct = (n === S.solution[r][c]);
+      S.grid[r][c] = n;
+      S.cands[r][c] = [];
+      if (correct) {
+        // 音调随已填数量升高，营造进度感
+        var filledCount = 0;
+        for (var rr = 0; rr < N; rr++) for (var cc = 0; cc < N; cc++) if (S.grid[rr][cc]) filledCount++;
+        FX.step(Math.floor(filledCount / 8) + 1);
+      } else {
+        S.errors++;
+        FX.bad();
+      }
+      var el = cellEl(r, c);
+      if (el) {
+        el.classList.add('fx-in');
+        setTimeout(function () { el.classList.remove('fx-in'); }, 250);
+      }
+      // 填入后自动清除同行/列/宫的该候选数
+      if (correct) {
+        for (var i2 = 0; i2 < N; i2++) {
+          removeCand(r, i2, n);
+          removeCand(i2, c, n);
+        }
+        var br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+        for (var rr2 = br; rr2 < br + 3; rr2++)
+          for (var cc2 = bc; cc2 < bc + 3; cc2++)
+            removeCand(rr2, cc2, n);
+      }
+    }
+
+    render();
+    updateStatus();
+    saveGame();
+    checkWin();
+  }
+
+  function removeCand(r, c, n) {
+    var a = S.cands[r][c];
+    if (!a) return;
+    var i = a.indexOf(n);
+    if (i >= 0) a.splice(i, 1);
+  }
+
+  function eraseCell() {
+    if (!S.sel || S.over) return;
+    var r = S.sel.r, c = S.sel.c;
+    if (S.given[r][c]) return;
+    S.history.push({ r: r, c: c, prev: S.grid[r][c], prevCands: S.cands[r][c].slice() });
+    S.grid[r][c] = 0;
+    S.cands[r][c] = [];
+    render();
+    updateStatus();
+    FX.undo();
+    saveGame();
+  }
+
+  function undo() {
+    if (!S.history.length || S.over) return;
+    var h = S.history.pop();
+    S.grid[h.r][h.c] = h.prev;
+    S.cands[h.r][h.c] = h.prevCands || [];
+    S.sel = { r: h.r, c: h.c };
+    render();
+    updateStatus();
+    FX.undo();
+    saveGame();
+  }
+
+  /* =========== 提示 =========== */
+
+  function hint() {
+    if (S.over) return;
+    // 找一个空格（优先选中的，否则随机）
+    var target = null;
+    if (S.sel && S.grid[S.sel.r][S.sel.c] === 0 && !S.given[S.sel.r][S.sel.c]) {
+      target = S.sel;
+    } else {
+      var empties = [];
+      for (var r = 0; r < N; r++) for (var c = 0; c < N; c++)
+        if (S.grid[r][c] === 0) empties.push({ r: r, c: c });
+      if (!empties.length) return;
+      target = empties[Math.floor(Math.random() * empties.length)];
+    }
+
+    var v = S.solution[target.r][target.c];
+    S.history.push({ r: target.r, c: target.c, prev: S.grid[target.r][target.c], prevCands: S.cands[target.r][target.c].slice() });
+    S.grid[target.r][target.c] = v;
+    S.cands[target.r][target.c] = [];
+    S.sel = { r: target.r, c: target.c };
+
+    render();
+    var el = cellEl(target.r, target.c);
+    if (el) {
+      el.classList.add('hint');
+      setTimeout(function () { el.classList.remove('hint'); }, 1500);
+    }
+    FX.good();
+    updateStatus();
+    saveGame();
+    checkWin();
+  }
+
+  /* =========== 检查错误 =========== */
+
+  function checkErrors() {
+    var wrong = 0;
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        if (S.grid[r][c] && !S.given[r][c] && S.grid[r][c] !== S.solution[r][c]) {
+          wrong++;
+          var el = cellEl(r, c);
+          if (el) {
+            el.classList.add('conflict');
+            el.classList.add('hint');
+            (function (e) { setTimeout(function () { e.classList.remove('hint'); }, 1500); })(el);
+          }
+        }
+      }
+    }
+    if (wrong) { FX.bad(); toast('有 ' + wrong + ' 处填错了（已标红）'); }
+    else { FX.good(); toast('目前全部正确 👍'); }
+  }
+
+  function toast(msg) {
+    var old = document.getElementById('toast');
+    if (old) old.remove();
+    var d = document.createElement('div');
+    d.id = 'toast';
+    d.textContent = msg;
+    d.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);' +
+      'background:rgba(20,26,52,.96);border:1px solid rgba(255,255,255,.18);' +
+      'color:#e8ecff;padding:10px 18px;border-radius:11px;font-size:13px;z-index:100;' +
+      'box-shadow:0 10px 30px rgba(0,0,0,.5);pointer-events:none;transition:opacity .25s';
+    document.body.appendChild(d);
+    setTimeout(function () {
+      d.style.opacity = '0';
+      setTimeout(function () { d.remove(); }, 300);
+    }, 1600);
+  }
+
+  /* =========== 胜负 =========== */
+
+  function checkWin() {
+    for (var r = 0; r < N; r++)
+      for (var c = 0; c < N; c++)
+        if (S.grid[r][c] !== S.solution[r][c]) return;
+
+    S.over = true;
+    stopTimer();
+    FX.win();
+    var isBest = saveBest(S.elapsed);
+    Save.clear('sudoku');
+    setTimeout(function () { showOver(isBest); }, 400);
+  }
+
+  function readBestAll() {
+    try {
+      var raw = localStorage.getItem(KEY_BEST);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function readBest() { return readBestAll()[S.diff] || null; }
+  function saveBest(sec) {
+    var all = readBestAll();
+    var cur = all[S.diff];
+    if (!cur || sec < cur) {
+      all[S.diff] = sec;
+      try { localStorage.setItem(KEY_BEST, JSON.stringify(all)); } catch (e) {}
+      return true;
+    }
+    return false;
+  }
+
+  function showOver(isBest) {
+    document.getElementById('ovTime').textContent = S.elapsed;
+    document.getElementById('ovDiff').textContent = DIFFS[S.diff].name;
+    var best = readBest();
+    document.getElementById('ovBest').textContent = best ? best + 's' : '—';
+    document.getElementById('ovText').textContent =
+      (isBest ? '🏆 新纪录！' : '完成得不错！') +
+      (S.errors > 0 ? '（过程中填错 ' + S.errors + ' 次）' : '（零失误，完美！）');
+    document.getElementById('over').classList.add('show');
+  }
+
+  /* =========== 存档 =========== */
+
+  function saveGame() {
+    if (S.over) return;
+    // 完全没动过就不存
+    var moved = false;
+    for (var r = 0; r < N && !moved; r++)
+      for (var c = 0; c < N; c++)
+        if (S.grid[r][c] !== S.puzzle[r][c]) { moved = true; break; }
+    if (!moved) { Save.clear('sudoku'); return; }
+
+    try {
+      Save.write('sudoku', {
+        diff: S.diff,
+        puzzle: S.puzzle,
+        solution: S.solution,
+        grid: S.grid,
+        cands: S.cands,
+        errors: S.errors,
+        elapsed: S.elapsed
+      });
+    } catch (e) {}
+  }
+
+  function readSave() {
+    var s = Save.read('sudoku');
+    if (!s || !s.puzzle || !s.grid) return null;
+    return s;
+  }
+
+  function restoreGame(s) {
+    S.diff = s.diff || 'normal';
+    S.puzzle = s.puzzle;
+    S.solution = s.solution;
+    S.grid = s.grid;
+    S.cands = s.cands || [];
+    // 补全 cands 结构
+    for (var r = 0; r < N; r++) {
+      if (!S.cands[r]) S.cands[r] = [];
+      for (var c = 0; c < N; c++) {
+        if (!S.cands[r][c] || !Array.isArray(S.cands[r][c])) S.cands[r][c] = [];
+      }
+    }
+    S.given = S.puzzle.map(function (row) {
+      return row.map(function (v) { return v !== 0; });
+    });
+    S.errors = s.errors || 0;
+    S.elapsed = s.elapsed || 0;
+    S.sel = null;
+    S.over = false;
+    S.history = [];
+    stopTimer();
+
+    buildBoard();
+    render();
+    updateStatus();
+    syncDiffButtons();
+    startTimer();
+  }
+
+  function checkSave() {
+    var s = Save.read('sudoku');
+    if (!s || !s.puzzle) return false;
+    var filled = 0;
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) if (s.grid[r][c]) filled++;
+    document.getElementById('resumeText').textContent =
+      (DIFFS[s.diff] || DIFFS.normal).name + '难度 · 已填 ' + filled + '/81 · 用时 ' + (s.elapsed || 0) + ' 秒';
+    document.getElementById('resume').classList.add('show');
+    return true;
+  }
+
+  function syncDiffButtons() {
+    var bs = document.querySelectorAll('#diffs button');
+    for (var i = 0; i < bs.length; i++) {
+      bs[i].classList.toggle('on', bs[i].dataset.d === S.diff);
+    }
+  }
+
+  /* =========== 事件 =========== */
+
+  function bindEvents() {
+    boardEl = document.getElementById('board');
+
+    boardEl.addEventListener('click', function (e) {
+      var el = e.target.closest('.cell');
+      if (!el) return;
+      selectCell(+el.dataset.r, +el.dataset.c);
+    });
+
+    document.getElementById('pad').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-n]');
+      if (!b) return;
+      inputNumber(+b.dataset.n);
+    });
+
+    document.getElementById('btnErase').addEventListener('click', function () {
+      eraseCell();
+    });
+    document.getElementById('btnUndo').addEventListener('click', function () {
+      undo();
+    });
+    document.getElementById('btnHint').addEventListener('click', function () {
+      hint();
+    });
+    document.getElementById('btnCheck').addEventListener('click', function () {
+      checkErrors();
+    });
+    document.getElementById('btnCand').addEventListener('click', function () {
+      S.candMode = !S.candMode;
+      this.style.background = S.candMode
+        ? 'linear-gradient(135deg,#6ea8ff,#a06bff)' : '';
+      this.style.color = S.candMode ? '#fff' : '';
+      toast(S.candMode ? '候选数模式：输入的是小字候选' : '普通模式：输入的是答案');
+      FX.click();
+    });
+
+    /* 键盘 */
+    document.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (k >= '1' && k <= '9') { e.preventDefault(); inputNumber(+k); return; }
+      if (k === 'Backspace' || k === 'Delete' || k === '0') { e.preventDefault(); eraseCell(); return; }
+      if (k === 'r' || k === 'R') { e.preventDefault(); newGame(); return; }
+      if (k === 'z' || k === 'Z') { e.preventDefault(); undo(); return; }
+      if (!S.sel) return;
+      if (k === 'ArrowUp' && S.sel.r > 0) { e.preventDefault(); selectCell(S.sel.r - 1, S.sel.c); }
+      if (k === 'ArrowDown' && S.sel.r < 8) { e.preventDefault(); selectCell(S.sel.r + 1, S.sel.c); }
+      if (k === 'ArrowLeft' && S.sel.c > 0) { e.preventDefault(); selectCell(S.sel.r, S.sel.c - 1); }
+      if (k === 'ArrowRight' && S.sel.c < 8) { e.preventDefault(); selectCell(S.sel.r, S.sel.c + 1); }
+    });
+
+    /* 按钮 */
+    document.getElementById('btnNew').addEventListener('click', function () { newGame(); });
+    document.getElementById('ovAgain').addEventListener('click', function () {
+      document.getElementById('over').classList.remove('show');
+      newGame();
+    });
+    document.getElementById('ovClose').addEventListener('click', function () {
+      document.getElementById('over').classList.remove('show');
+    });
+
+    document.getElementById('diffs').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-d]');
+      if (!b) return;
+      newGame(b.dataset.d);
+    });
+
+    /* 继续上局 */
+    document.getElementById('resumeYes').addEventListener('click', function () {
+      document.getElementById('resume').classList.remove('show');
+      var s = Save.read('sudoku');
+      if (s) restoreGame(s); else newGame();
+      FX.click();
+    });
+    document.getElementById('resumeNo').addEventListener('click', function () {
+      document.getElementById('resume').classList.remove('show');
+      Save.clear('sudoku');
+      newGame();
+    });
+
+    /* 音效开关 */
+    var sb = document.getElementById('btnSound');
+    function syncSound() {
+      sb.textContent = FX.on() ? '🔊' : '🔇';
+      sb.classList.toggle('off', !FX.on());
+    }
+    sb.addEventListener('click', function () {
+      FX.setEnabled(!FX.on());
+      syncSound();
+      if (FX.on()) FX.click();
+    });
+    syncSound();
+
+    /* 尺寸 */
+    window.addEventListener('resize', fitFont);
+    window.addEventListener('orientationchange', function () { setTimeout(fitFont, 150); });
+  }
+
+  /* =========== 启动 =========== */
+  function init() {
+    FX.init();
+    buildBoard();
+    bindEvents();
+
+    var saved = Save.read('sudoku');
+    if (saved) {
+      // 先铺一个题做背景，再弹「继续上局」
+      newGame('normal');
+      Save.write('sudoku', saved);     // newGame 会清档，写回去
+      checkSave();
+    } else {
+      newGame('normal');
+    }
+
+    window.__SD = {
+      S: S,
+      newGame: newGame,
+      selectCell: selectCell,
+      inputNumber: inputNumber,
+      eraseCell: eraseCell,
+      undo: undo,
+      hint: hint,
+      checkErrors: checkErrors,
+      render: render,
+      save: saveGame,
+      restore: restoreGame,
+      check: checkSave,
+      readSave: function () { return Save.read('sudoku'); },
+      clearSave: function () { Save.clear('sudoku'); },
+      generatePuzzle: generatePuzzle,
+      countSolutions: countSolutions,
+      isValid: isValid,
+      cellEl: cellEl,
+      fx: FX,
+      Save: Save
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>

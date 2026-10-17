@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>扫雷 · Minesweeper</title>
+<meta name="game:icon" content="💣">
+<meta name="game:desc" content="经典扫雷，三档难度。首点必安全，支持插旗与双键快开。">
+<meta name="game:tags" content="益智,单人,手机">
+<meta name="game:color" content="#ff6b6b">
+<meta name="game:badge" content="new">
+<style>
+:root{
+  --bg:#0b1020;
+  --panel:rgba(255,255,255,.055);
+  --panel-line:rgba(255,255,255,.12);
+  --text:#e8ecff;
+  --muted:#8f9ac0;
+  --accent:#6ea8ff;
+  --accent2:#a06bff;
+  --ok:#3ddc97;
+  --bad:#ff5d6c;
+  --warn:#ffc44d;
+  --cell:rgba(255,255,255,.07);
+  --cell-open:rgba(255,255,255,.035);
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 640px at 12% -12%, #1c2a55 0%, transparent 60%),
+    radial-gradient(900px 560px at 110% 8%, #3a1f5c 0%, transparent 55%),
+    linear-gradient(180deg,var(--bg),#131a33);
+  color:var(--text);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;min-height:100dvh;
+  -webkit-tap-highlight-color:transparent;
+}
+#app{max-width:640px;margin:0 auto;padding:20px 14px calc(24px + env(safe-area-inset-bottom))}
+
+/* ---------- 头部 ---------- */
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.logo{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:800}
+.logo .mark{
+  width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:18px;
+  background:linear-gradient(135deg,#ff6b6b,#ffa94d);
+  box-shadow:0 6px 18px rgba(255,107,107,.35)
+}
+.spacer{flex:1}
+.icon-btn{
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--panel-line);
+  background:var(--panel);color:var(--text);cursor:pointer;font-size:15px;
+  display:grid;place-items:center;transition:.15s
+}
+.icon-btn:hover{background:rgba(255,255,255,.12)}
+.icon-btn.off{opacity:.45}
+
+/* ---------- 控制条 ---------- */
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.seg{display:flex;background:var(--panel);border:1px solid var(--panel-line);border-radius:11px;padding:3px}
+.seg button{
+  border:0;background:transparent;color:var(--muted);cursor:pointer;
+  padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;transition:.15s;font-family:inherit
+}
+.seg button.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.btn{
+  border:1px solid var(--panel-line);background:var(--panel);color:var(--text);
+  padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;
+  font-family:inherit;transition:.15s
+}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:0;color:#fff}
+
+/* ---------- 状态栏 ---------- */
+.status{
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--panel-line);border-radius:12px;
+  padding:10px 13px;margin-bottom:12px;font-size:13px
+}
+.chip{display:flex;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+.chip b{font-size:16px;color:var(--text)}
+.chip .k{color:var(--muted);font-size:12px}
+#face{
+  font-size:22px;line-height:1;background:transparent;border:0;cursor:pointer;
+  padding:2px 6px;border-radius:8px;transition:.15s
+}
+#face:hover{background:rgba(255,255,255,.1)}
+
+/* ---------- 棋盘 ---------- */
+#board{
+  display:grid;gap:3px;margin:0 auto;
+  padding:8px;border-radius:14px;
+  background:rgba(0,0,0,.25);border:1px solid var(--panel-line);
+  touch-action:manipulation;user-select:none;
+  width:fit-content;
+}
+.c{
+  width:var(--cs,34px);height:var(--cs,34px);
+  border-radius:6px;
+  background:var(--cell);
+  border:1px solid rgba(255,255,255,.07);
+  display:grid;place-items:center;
+  font-size:calc(var(--cs,34px) * .56);
+  font-weight:800;font-variant-numeric:tabular-nums;
+  cursor:pointer;transition:background .12s,transform .08s;
+  position:relative
+}
+.c:hover:not(.o){background:rgba(255,255,255,.14)}
+.c:active:not(.o){transform:scale(.94)}
+.c.o{
+  background:var(--cell-open);
+  cursor:default;
+  border-color:rgba(255,255,255,.04)
+}
+/* 数字配色 */
+.c[data-n="1"]{color:#6ea8ff}
+.c[data-n="2"]{color:#3ddc97}
+.c[data-n="3"]{color:#ff6b6b}
+.c[data-n="4"]{color:#b197fc}
+.c[data-n="5"]{color:#ffc44d}
+.c[data-n="6"]{color:#38d9a9}
+.c[data-n="7"]{color:#f783ac}
+.c[data-n="8"]{color:#8f9ac0}
+.c.flag{color:var(--warn)}
+.c.mine{background:rgba(255,93,108,.35);color:#fff}
+.c.mine-boom{background:rgba(255,93,108,.75);color:#fff}
+.c.wrong{background:rgba(255,93,108,.2);color:var(--bad)}
+.c.hint{background:rgba(110,168,255,.25)}
+
+/* ---------- 动画 ---------- */
+@keyframes openIn{from{transform:scale(.6);opacity:.2}to{transform:scale(1);opacity:1}}
+.c.fx-open{animation:openIn .16s ease-out}
+@keyframes flagIn{0%{transform:scale(0) rotate(-40deg)}70%{transform:scale(1.25) rotate(6deg)}100%{transform:scale(1) rotate(0)}}
+.c.fx-flag{animation:flagIn .22s ease-out}
+@keyframes boom{
+  0%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,93,108,.9)}
+  50%{transform:scale(1.3);box-shadow:0 0 0 12px rgba(255,93,108,0)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,93,108,0)}
+}
+.c.fx-boom{animation:boom .45s ease-out}
+@keyframes winPop{0%,100%{transform:scale(1)}50%{transform:scale(1.5)}}
+#board.win .c.flag{animation:winPop .5s ease-in-out 2}
+
+/* ---------- 结果层 ---------- */
+.overlay{
+  position:fixed;inset:0;display:none;place-items:center;padding:20px;
+  background:rgba(6,10,24,.78);backdrop-filter:blur(6px);z-index:50
+}
+.overlay.show{display:grid}
+.card{
+  background:linear-gradient(180deg,#1a2246,#141a34);
+  border:1px solid var(--panel-line);border-radius:18px;
+  padding:26px 24px;max-width:360px;width:100%;text-align:center;
+  box-shadow:0 24px 60px rgba(0,0,0,.6)
+}
+.card .big{font-size:46px;line-height:1;margin-bottom:8px}
+.card h2{margin:0 0 6px;font-size:21px}
+.card h2.win{color:var(--ok)}
+.card h2.lose{color:var(--bad)}
+.card p{color:var(--muted);font-size:13px;margin:0 0 18px;line-height:1.7}
+.card .row{display:flex;gap:9px}
+.card .row .btn{flex:1 1 0;padding:10px}
+.stats{display:flex;gap:8px;justify-content:center;margin-bottom:16px;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:8px 14px;min-width:78px}
+.stat .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ---------- 提示 ---------- */
+.hint{
+  margin-top:12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8
+}
+.hint kbd{
+  background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.14);
+  border-radius:5px;padding:1px 6px;font-family:Consolas,monospace;font-size:11.5px
+}
+
+@media (max-width:430px){
+  #app{padding:14px 10px calc(18px + env(safe-area-inset-bottom))}
+  .logo{font-size:16px}
+  .logo .mark{width:28px;height:28px;font-size:15px;border-radius:8px}
+  .seg button{padding:6px 9px;font-size:12px}
+  .btn{padding:7px 11px;font-size:12px}
+  .status{padding:8px 10px;font-size:12px}
+  .chip b{font-size:14px}
+  #face{font-size:19px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="logo"><span class="mark">💣</span><span>扫雷</span></div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="btnSound" title="音效开关">🔊</button>
+  </header>
+
+  <div class="bar">
+    <div class="seg" id="diffs">
+      <button data-d="easy">简单</button>
+      <button data-d="normal" class="on">普通</button>
+      <button data-d="hard">困难</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btnNew">新游戏</button>
+  </div>
+
+  <div class="status">
+    <button id="face" title="新游戏">🙂</button>
+    <div class="chip"><span class="k">剩余雷数</span><b id="mineLeft">0</b></div>
+    <div class="chip"><span class="k">用时</span><b id="timer">0</b><span class="k">秒</span></div>
+    <div class="spacer"></div>
+    <div class="chip"><span class="k">最佳</span><b id="best">—</b></div>
+  </div>
+
+  <div id="board"></div>
+
+  <p class="hint">
+    左键 / 轻点：翻开　·　右键 / 长按：插旗　·　<b>双键或点数字：快速摊开</b><br>
+    <kbd>R</kbd> 新游戏 · 首次点击保证安全
+  </p>
+</div>
+
+<!-- 结果 -->
+<div class="overlay" id="over">
+  <div class="card">
+    <div class="big" id="ovIcon">💥</div>
+    <h2 id="ovTitle">踩到雷了</h2>
+    <div class="stats">
+      <div class="stat"><div class="v" id="ovTime">0</div><div class="l">用时（秒）</div></div>
+      <div class="stat"><div class="v" id="ovCleared">0</div><div class="l">已翻开</div></div>
+      <div class="stat"><div class="v" id="ovBest">—</div><div class="l">最佳</div></div>
+    </div>
+    <p id="ovText"></p>
+    <div class="row">
+      <button class="btn primary" id="ovAgain">再来一局</button>
+      <button class="btn" id="ovClose">看看棋盘</button>
+    </div>
+  </div>
+</div>
+
+<!-- 继续上局 -->
+<div class="overlay" id="resume">
+  <div class="card">
+    <div class="big">💾</div>
+    <h2>发现未完成的对局</h2>
+    <p id="resumeText"></p>
+    <div class="row">
+      <button class="btn primary" id="resumeYes">继续上局</button>
+      <button class="btn" id="resumeNo">重新开始</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   FX / Save —— 统一模块（与其它小游戏同一份）
+   ========================================================================= */
+/* =========================================================================
+   FX —— 统一音效 + 动画模块（各游戏内联同一份，保持手感一致）
+   -------------------------------------------------------------------------
+   设计要点：
+   · 纯 WebAudio 合成，无音频文件，离线可用
+   · 支持「音调改变」：tone() 可指定频率，slide() 可做上滑/下滑
+   · 浏览器要求首次交互后才能出声，已自动解锁
+   · 音效开关持久化到 localStorage
+   ========================================================================= */
+var FX = (function () {
+  var ctx = null;
+  var enabled = true;
+  var VOL = 0.07;
+
+  function ac() {
+    if (!ctx) {
+      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    return ctx;
+  }
+
+  /* 单音：freq 频率(Hz) · dur 时长(s) · type 波形 · vol 音量 · when 延迟(s) */
+  function tone(freq, dur, type, vol, when) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime + (when || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 滑音：从 f1 滑到 f2 —— 「音调改变」的核心效果 */
+  function slide(f1, f2, dur, type, vol) {
+    if (!enabled) return;
+    var c = ac(); if (!c) return;
+    var t0 = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(1, f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || VOL, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  /* 音阶：按度数取频率，用于「越高越亮」的递进音效 */
+  function deg(base, step) {
+    // 大调音阶：1 2 3 4 5 6 7 8(高八度)
+    var ratio = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2];
+    var i = Math.abs(step | 0) % 8;
+    var oct = Math.floor(Math.abs(step | 0) / 8);
+    return base * ratio[i] * Math.pow(2, oct);
+  }
+
+  return {
+    tone: tone,
+    slide: slide,
+    degree: deg,
+    unlock: function () { ac(); },
+    on: function () { return enabled; },
+    setEnabled: function (v) {
+      enabled = !!v;
+      try { localStorage.setItem('games.fx.sound', enabled ? '1' : '0'); } catch (e) {}
+    },
+    init: function () {
+      try {
+        var s = localStorage.getItem('games.fx.sound');
+        if (s === '0') enabled = false;
+      } catch (e) {}
+      var unlock = function () { ac(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+        window.addEventListener(ev, unlock, { once: true, passive: true });
+      });
+      return enabled;
+    },
+
+    /* ---- 通用音效 ---- */
+    click:  function () { tone(620, 0.05, 'square', 0.05); },
+    move:   function () { tone(520, 0.05, 'sine', 0.05); },
+    place:  function () { slide(300, 420, 0.07, 'square', 0.055); },
+    /* 递进音：step 越大音调越高（连击 / 合成 / 连中） */
+    step:   function (n) {
+      var s = Math.min(Math.abs(n | 0), 12);
+      tone(deg(440, s), 0.09, 'triangle', 0.07);
+      tone(deg(440, s) * 2, 0.06, 'sine', 0.035, 0.02);
+    },
+    good:   function () { slide(520, 780, 0.1, 'triangle', 0.07); },
+    bad:    function () { slide(240, 140, 0.16, 'sawtooth', 0.07); },
+    hit:    function () { slide(700, 1100, 0.09, 'square', 0.07); },
+    miss:   function () { tone(180, 0.1, 'sine', 0.045); },
+    explode:function () {
+      slide(420, 90, 0.28, 'sawtooth', 0.08);
+      tone(120, 0.2, 'square', 0.05, 0.02);
+    },
+    win:    function () {
+      [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.07, i * 0.09); });
+    },
+    lose:   function () {
+      [392, 330, 262, 196].forEach(function (f, i) { tone(f, 0.24, 'sawtooth', 0.06, i * 0.13); });
+    },
+    undo:   function () { slide(500, 320, 0.1, 'sine', 0.05); },
+    alert:  function () { tone(880, 0.08, 'square', 0.06); tone(880, 0.08, 'square', 0.06, 0.12); }
+  };
+})();
+
+/* =========================================================================
+   Save —— 未打完的对局存档（各游戏把状态序列化后存这里，下次可继续）
+   ========================================================================= */
+var Save = (function () {
+  var PREFIX = 'games.';
+  return {
+    write: function (name, obj) {
+      try { localStorage.setItem(PREFIX + name + '.save', JSON.stringify(obj)); } catch (e) {}
+    },
+    read: function (name) {
+      try {
+        var s = localStorage.getItem(PREFIX + name + '.save');
+        return s ? JSON.parse(s) : null;
+      } catch (e) { return null; }
+    },
+    clear: function (name) {
+      try { localStorage.removeItem(PREFIX + name + '.save'); } catch (e) {}
+    }
+  };
+})();
+
+/* =========================================================================
+   扫雷
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  var DIFFS = {
+    easy:   { rows: 9,  cols: 9,  mines: 10, name: '简单' },
+    normal: { rows: 16, cols: 16, mines: 40, name: '普通' },
+    hard:   { rows: 16, cols: 30, mines: 99, name: '困难' }
+  };
+  var DIFF_NAME = { easy: '简单', normal: '普通', hard: '困难' };
+  var KEY_SAVE = 'games.minesweeper.save';
+  var KEY_BEST = 'games.minesweeper.best';
+
+  var S = {                     // 游戏状态
+    diff: 'normal',
+    rows: 0, cols: 0, mineCount: 0,
+    mine: [],                   // [r][c] = true/false
+    open: [],                   // [r][c] = 是否已翻开
+    flag: [],                   // [r][c] = 是否插旗
+    num: [],                    // [r][c] = 周围雷数
+    started: false,             // 是否已开始（首次点击后才布雷）
+    over: false,
+    win: false,
+    opened: 0,
+    flags: 0,
+    startTime: 0,
+    elapsed: 0,
+    timerId: null
+  };
+
+  var boardEl, faceEl;
+
+  /* ---------- 工具 ---------- */
+  function inRange(r, c) { return r >= 0 && r < S.rows && c >= 0 && c < S.cols; }
+  function make2D(v) {
+    var a = [], r, c;
+    for (r = 0; r < S.rows; r++) {
+      var row = [];
+      for (c = 0; c < S.cols; c++) row.push(v);
+      a.push(row);
+    }
+    return a;
+  }
+  function neighbors(r, c) {
+    var out = [];
+    for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      var rr = r + dr, cc = c + dc;
+      if (inRange(rr, cc)) out.push([rr, cc]);
+    }
+    return out;
+  }
+  function countMinesAround(r, c) {
+    var n = 0;
+    neighbors(r, c).forEach(function (p) { if (S.mine[p[0]][p[1]]) n++; });
+    return n;
+  }
+
+  /* ---------- 初始化新局 ---------- */
+  function newGame(diff) {
+    if (diff) S.diff = diff;
+    var d = DIFFS[S.diff];
+    S.rows = d.rows; S.cols = d.cols; S.mineCount = d.mines;
+
+    S.mine = make2D(false);
+    S.open = make2D(false);
+    S.flag = make2D(false);
+    S.num = make2D(0);
+    S.started = false;
+    S.over = false;
+    S.win = false;
+    S.opened = 0;
+    S.flags = 0;
+    S.elapsed = 0;
+    S.startTime = 0;
+    stopTimer();
+
+    buildBoard();
+    render();
+    updateStatus();
+    Save.clear('minesweeper');
+    setFace('🙂');
+    FX.click();
+  }
+
+  /* ---------- 布雷（首次点击后，避开首点及其周围） ---------- */
+  function plantMines(safeR, safeC) {
+    var safe = {};
+    safe[safeR + ',' + safeC] = true;
+    // 首点周围也避开，保证第一下能展开一片
+    neighbors(safeR, safeC).forEach(function (p) { safe[p[0] + ',' + p[1]] = true; });
+
+    var pool = [];
+    for (var r = 0; r < S.rows; r++) for (var c = 0; c < S.cols; c++) {
+      if (!safe[r + ',' + c]) pool.push([r, c]);
+    }
+    // 洗牌
+    for (var i = pool.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    var n = Math.min(S.mineCount, pool.length);
+    for (var k = 0; k < n; k++) S.mine[pool[k][0]][pool[k][1]] = true;
+
+    // 计算数字
+    for (var rr = 0; rr < S.rows; rr++) for (var cc = 0; cc < S.cols; cc++) {
+      S.num[rr][cc] = S.mine[rr][cc] ? 0 : countMinesAround(rr, cc);
+    }
+    S.started = true;
+    startTimer();
+  }
+
+  /* ---------- 构建 DOM 棋盘 ---------- */
+  function buildBoard() {
+    boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    boardEl.classList.remove('win');
+    boardEl.style.gridTemplateColumns = 'repeat(' + S.cols + ', var(--cs, 34px))';
+
+    var frag = document.createDocumentFragment();
+    for (var r = 0; r < S.rows; r++) {
+      for (var c = 0; c < S.cols; c++) {
+        var el = document.createElement('div');
+        el.className = 'c';
+        el.dataset.r = r;
+        el.dataset.c = c;
+        el.setAttribute('role', 'button');
+        frag.appendChild(el);
+      }
+    }
+    boardEl.appendChild(frag);
+    fitCellSize();
+  }
+
+  /** 根据可用宽度自动调整格子大小，保证手机上不横向溢出 */
+  function fitCellSize() {
+    if (!boardEl) return;
+    var wrapW = document.getElementById('app').clientWidth - 28;   // 减去内边距
+    var gap = 3, pad = 16;
+    var maxCell = 38, minCell = 16;
+    var cs = Math.floor((wrapW - pad - gap * (S.cols - 1)) / S.cols);
+    cs = Math.max(minCell, Math.min(maxCell, cs));
+    boardEl.style.setProperty('--cs', cs + 'px');
+  }
+
+  function cellEl(r, c) {
+    return boardEl.children[r * S.cols + c];
+  }
+
+  /* ---------- 渲染 ---------- */
+  function render() {
+    for (var r = 0; r < S.rows; r++) {
+      for (var c = 0; c < S.cols; c++) {
+        var el = cellEl(r, c);
+        var isOpen = S.open[r][c];
+        el.className = 'c' + (isOpen ? ' o' : '');
+        el.textContent = '';
+        el.removeAttribute('data-n');
+
+        if (isOpen) {
+          if (S.mine[r][c]) {
+            el.classList.add('mine');
+            el.textContent = '💣';
+          } else if (S.num[r][c] > 0) {
+            el.textContent = S.num[r][c];
+            el.dataset.n = S.num[r][c];
+          }
+        } else if (S.flag[r][c]) {
+          el.classList.add('flag');
+          el.textContent = '🚩';
+        }
+      }
+    }
+  }
+
+  function updateStatus() {
+    document.getElementById('mineLeft').textContent = Math.max(0, S.mineCount - S.flags);
+    document.getElementById('timer').textContent = S.elapsed;
+    var best = readBest();
+    document.getElementById('best').textContent = best ? best + ' 秒' : '—';
+  }
+
+  function setFace(f) { document.getElementById('face').textContent = f; }
+
+  /* ---------- 计时 ---------- */
+  function startTimer() {
+    stopTimer();
+    S.startTime = Date.now() - S.elapsed * 1000;
+    S.timerId = setInterval(function () {
+      S.elapsed = Math.floor((Date.now() - S.startTime) / 1000);
+      if (S.elapsed > 999) S.elapsed = 999;
+      document.getElementById('timer').textContent = S.elapsed;
+    }, 250);
+  }
+  function stopTimer() {
+    if (S.timerId) { clearInterval(S.timerId); S.timerId = null; }
+  }
+
+  /* ---------- 翻开 ---------- */
+  function openCell(r, c) {
+    if (S.over || S.open[r][c] || S.flag[r][c]) return;
+
+    // 首点：布雷并保证安全
+    if (!S.started) {
+      plantMines(r, c);
+    }
+
+    if (S.mine[r][c]) {
+      boom(r, c);
+      return;
+    }
+
+    // 洪水填充（BFS，避免递归太深）
+    var queue = [[r, c]];
+    var opened = 0;
+    while (queue.length) {
+      var p = queue.shift();
+      var rr = p[0], cc = p[1];
+      if (!inRange(rr, cc)) continue;
+      if (S.open[rr][cc] || S.flag[rr][cc]) continue;
+      if (S.mine[rr][cc]) continue;
+
+      S.open[rr][cc] = true;
+      S.opened++;
+      opened++;
+      var el = cellEl(rr, cc);
+      if (el) el.classList.add('fx-open');
+
+      // 数字为 0 才继续扩散
+      if (S.num[rr][cc] === 0) {
+        neighbors(rr, cc).forEach(function (q) {
+          if (!S.open[q[0]][q[1]] && !S.flag[q[0]][q[1]]) queue.push(q);
+        });
+      }
+    }
+
+    render();
+    updateStatus();
+
+    // 音效：一次展开的格子越多，音调越高（有"连锁"的爽感）
+    if (opened > 1) FX.step(Math.min(opened, 12));
+    else FX.move();
+
+    checkWin();
+    saveGame();
+  }
+
+  function boom(r, c) {
+    S.over = true;
+    stopTimer();
+    S.open[r][c] = true;
+
+    // 显示所有雷
+    for (var rr = 0; rr < S.rows; rr++) {
+      for (var cc = 0; cc < S.cols; cc++) {
+        if (S.mine[rr][cc] && !S.flag[rr][cc]) S.open[rr][cc] = true;
+        // 插错旗
+        if (!S.mine[rr][cc] && S.flag[rr][cc]) {
+          var e2 = cellEl(rr, cc);
+          if (e2) { e2.classList.add('wrong'); e2.textContent = '✕'; }
+        }
+      }
+    }
+    render();
+
+    var el = cellEl(r, c);
+    if (el) {
+      el.classList.remove('mine');
+      el.classList.add('mine-boom', 'fx-boom');
+      el.textContent = '💥';
+    }
+
+    FX.explode();
+    FX.lose();
+    setFace('😵');
+    setTimeout(function () { showOver(false); }, 620);
+    Save.clear('minesweeper');
+  }
+
+  /* ---------- 插旗 ---------- */
+  function toggleFlag(r, c) {
+    if (S.over || S.open[r][c]) return;
+    // 首点前也可以插旗，但不开始计时
+    S.flag[r][c] = !S.flag[r][c];
+    S.flags += S.flag[r][c] ? 1 : -1;
+
+    var el = cellEl(r, c);
+    if (el) {
+      el.classList.toggle('flag', S.flag[r][c]);
+      el.textContent = S.flag[r][c] ? '🚩' : '';
+      if (S.flag[r][c]) {
+        el.classList.add('fx-flag');
+        setTimeout(function () { el.classList.remove('fx-flag'); }, 300);
+      }
+    }
+    FX.click();
+    updateStatus();
+    saveGame();
+  }
+
+  /* ---------- 快速摊开（点已翻开的数字） ---------- */
+  function chord(r, c) {
+    if (S.over || !S.open[r][c]) return;
+    var n = S.num[r][c];
+    if (!n) return;
+    var fn = [], flags = 0;
+    neighbors(r, c).forEach(function (p) {
+      if (S.flag[p[0]][p[1]]) flags++;
+      else if (!S.open[p[0]][p[1]]) fn.push(p);
+    });
+    if (flags !== n || !fn.length) return;    // 旗数不对就不动
+
+    // 逐个翻开
+    var hitMine = null;
+    fn.forEach(function (p) {
+      if (S.mine[p[0]][p[1]]) { hitMine = p; return; }
+      openCell(p[0], p[1]);
+    });
+    if (hitMine) boom(hitMine[0], hitMine[1]);
+    else FX.good();
+  }
+
+  /* ---------- 胜利判定 ---------- */
+  function checkWin() {
+    var total = S.rows * S.cols;
+    if (S.opened >= total - S.mineCount) {
+      S.over = true;
+      S.win = true;
+      stopTimer();
+
+      // 自动给所有雷插旗
+      for (var r = 0; r < S.rows; r++) for (var c = 0; c < S.cols; c++) {
+        if (S.mine[r][c]) { S.open[r][c] = false; S.flag[r][c] = true; }
+      }
+      S.flags = S.mineCount;
+      render();
+      boardEl.classList.add('win');
+      updateStatus();
+      setFace('😎');
+      FX.win();
+
+      var isBest = saveBest(S.elapsed);
+      Save.clear('minesweeper');
+      setTimeout(function () { showOver(true, isBest); }, 500);
+    }
+  }
+
+  /* ---------- 结果弹窗 ---------- */
+  function showOver(win, isBest) {
+    document.getElementById('ovIcon').textContent = win ? '🎉' : '💥';
+    var t = document.getElementById('ovTitle');
+    t.textContent = win ? '扫雷成功！' : '踩到雷了';
+    t.className = win ? 'win' : 'lose';
+    document.getElementById('ovTime').textContent = S.elapsed;
+    document.getElementById('ovCleared').textContent = S.opened;
+    var best = readBest();
+    document.getElementById('ovBest').textContent = best ? best + 's' : '—';
+    document.getElementById('ovText').textContent = win
+      ? (isBest ? '🏆 新纪录！' : '难度：' + DIFF_NAME[S.diff] + '，继续挑战更快的成绩吧。')
+      : '别灰心，' + DIFF_NAME[S.diff] + '难度再试一次。';
+    document.getElementById('over').classList.add('show');
+  }
+
+  /* ---------- 最佳成绩 ---------- */
+  function readBestAll() {
+    try {
+      var raw = localStorage.getItem(KEY_BEST);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function readBest() {
+    return readBestAll()[S.diff] || null;
+  }
+  function saveBest(sec) {
+    var all = readBestAll();
+    var cur = all[S.diff];
+    if (!cur || sec < cur) {
+      all[S.diff] = sec;
+      try { localStorage.setItem(KEY_BEST, JSON.stringify(all)); } catch (e) {}
+      return true;
+    }
+    return false;
+  }
+
+  /* ---------- 存档 ---------- */
+  function saveGame() {
+    if (S.over) return;
+    if (!S.started) { Save.clear('minesweeper'); return; }   // 还没开始不用存
+    try {
+      Save.write('minesweeper', {
+        diff: S.diff,
+        mine: S.mine, open: S.open, flag: S.flag, num: S.num,
+        started: S.started, opened: S.opened, flags: S.flags,
+        elapsed: S.elapsed
+      });
+    } catch (e) {}
+  }
+  function readSave() {
+    var s = Save.read('minesweeper');
+    if (!s || !s.started || !s.mine) return null;
+    if (s.opened >= S.rows * S.cols) return null;
+    return s;
+  }
+  function restoreGame(s) {
+    S.diff = s.diff || 'normal';
+    var d = DIFFS[S.diff];
+    S.rows = d.rows; S.cols = d.cols; S.mineCount = d.mines;
+
+    S.mine = s.mine;
+    S.open = s.open;
+    S.flag = s.flag;
+    S.num = s.num;
+    S.started = true;
+    S.over = false;
+    S.win = false;
+    S.opened = s.opened || 0;
+    S.flags = s.flags || 0;
+    S.elapsed = s.elapsed || 0;
+
+    buildBoard();
+    render();
+    updateStatus();
+    setFace('🙂');
+    startTimer();
+    syncDiffButtons();
+  }
+  function checkSave() {
+    var s = Save.read('minesweeper');
+    if (!s || !s.started) return false;
+    var d = DIFFS[s.diff || 'normal'];
+    if (!d) return false;
+    S.rows = d.rows; S.cols = d.cols;
+    if (s.opened >= S.rows * S.cols - d.mines) { Save.clear('minesweeper'); return false; }
+    document.getElementById('resumeText').textContent =
+      DIFF_NAME[s.diff] + '难度 · 已翻开 ' + s.opened + ' 格 · 用时 ' + (s.elapsed || 0) + ' 秒';
+    document.getElementById('resume').classList.add('show');
+    return true;
+  }
+
+  /* ---------- 难度切换 ---------- */
+  function syncDiffButtons() {
+    var bs = document.querySelectorAll('#diffs button');
+    for (var i = 0; i < bs.length; i++) {
+      bs[i].classList.toggle('on', bs[i].dataset.d === S.diff);
+    }
+  }
+
+  /* ---------- 事件 ---------- */
+  function bindEvents() {
+    boardEl = document.getElementById('board');
+
+    /* --- 鼠标 --- */
+    boardEl.addEventListener('click', function (e) {
+      var el = e.target.closest('.c');
+      if (!el) return;
+      var r = +el.dataset.r, c = +el.dataset.c;
+      if (S.open[r][c]) chord(r, c);
+      else openCell(r, c);
+    });
+
+    boardEl.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      var el = e.target.closest('.c');
+      if (!el) return;
+      toggleFlag(+el.dataset.r, +el.dataset.c);
+    });
+
+    /* --- 触屏：长按插旗，短按翻开 --- */
+    var pressTimer = null, longPressed = false, startEl = null;
+
+    boardEl.addEventListener('touchstart', function (e) {
+      var el = e.target.closest('.c');
+      if (!el) return;
+      startEl = el;
+      longPressed = false;
+      pressTimer = setTimeout(function () {
+        longPressed = true;
+        toggleFlag(+el.dataset.r, +el.dataset.c);
+        if (navigator.vibrate) { try { navigator.vibrate(25); } catch (err) {} }
+      }, 380);
+    }, { passive: true });
+
+    boardEl.addEventListener('touchend', function (e) {
+      clearTimeout(pressTimer);
+      if (!startEl) return;
+      if (longPressed) {
+        e.preventDefault();          // 长按已处理，阻止后续 click
+        startEl = null;
+        return;
+      }
+      // 短按：走 click 逻辑（click 事件会自然触发）
+      startEl = null;
+    }, { passive: false });
+
+    boardEl.addEventListener('touchmove', function () {
+      clearTimeout(pressTimer);      // 滑动取消长按
+      startEl = null;
+    }, { passive: true });
+
+    boardEl.addEventListener('touchcancel', function () {
+      clearTimeout(pressTimer);
+      startEl = null;
+    }, { passive: true });
+
+    /* --- 键盘 --- */
+    document.addEventListener('keydown', function (e) {
+      var k = e.key.toLowerCase();
+      if (k === 'r') { e.preventDefault(); newGame(); }
+    });
+
+    /* --- 按钮 --- */
+    document.getElementById('btnNew').addEventListener('click', function () { newGame(); });
+    document.getElementById('face').addEventListener('click', function () { newGame(); });
+    document.getElementById('ovAgain').addEventListener('click', function () {
+      document.getElementById('over').classList.remove('show');
+      Save.clear('minesweeper');
+      newGame();
+    });
+    document.getElementById('ovClose').addEventListener('click', function () {
+      document.getElementById('over').classList.remove('show');
+    });
+
+    document.getElementById('diffs').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-d]');
+      if (!b) return;
+      if (b.dataset.d === S.diff && !S.started) return;
+      newGame(b.dataset.d);
+    });
+
+    /* --- 继续上局 --- */
+    document.getElementById('resumeYes').addEventListener('click', function () {
+      document.getElementById('resume').classList.remove('show');
+      var s = Save.read('minesweeper');
+      if (s) restoreGame(s); else newGame();
+      FX.click();
+    });
+    document.getElementById('resumeNo').addEventListener('click', function () {
+      document.getElementById('resume').classList.remove('show');
+      Save.clear('minesweeper');
+      newGame();
+    });
+
+    /* --- 音效开关 --- */
+    var sb = document.getElementById('btnSound');
+    function syncSound() {
+      sb.textContent = FX.on() ? '🔊' : '🔇';
+      sb.classList.toggle('off', !FX.on());
+    }
+    sb.addEventListener('click', function () {
+      FX.setEnabled(!FX.on());
+      syncSound();
+      if (FX.on()) FX.click();
+    });
+    syncSound();
+
+    /* --- 窗口尺寸变化 --- */
+    window.addEventListener('resize', fitCellSize);
+    window.addEventListener('orientationchange', function () {
+      setTimeout(fitCellSize, 150);
+    });
+  }
+
+  /* ---------- 启动 ---------- */
+  function init() {
+    FX.init();
+    // 先建一个空棋盘（让 checkSave 能算行列）
+    S.diff = 'normal';
+    var d = DIFFS.normal;
+    S.rows = d.rows; S.cols = d.cols; S.mineCount = d.mines;
+    buildBoard();
+    bindEvents();
+    newGame('normal');
+
+    if (checkSave()) {
+      // 有存档，保留弹窗
+    }
+
+    /* 暴露测试接口 */
+    window.__MS = {
+      S: S,
+      newGame: newGame,
+      openCell: openCell,
+      toggleFlag: toggleFlag,
+      chord: chord,
+      render: render,
+      save: saveGame,
+      restore: restoreGame,
+      check: checkSave,
+      readSave: function () { return Save.read('minesweeper'); },
+      clearSave: function () { Save.clear('minesweeper'); },
+      plantMines: plantMines,
+      cellEl: cellEl,
+      fx: FX,
+      Save: Save,
+      fit: fitCellSize
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>

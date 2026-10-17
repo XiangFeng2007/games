@@ -1,20 +1,19 @@
 /* =========================================================
-   游戏清单 —— 全站唯一需要手改的文件
+   游戏清单（本文件由「生成游戏清单.bat」自动生成，请勿手改）
    ---------------------------------------------------------
-   ★ 修改某个游戏的内容：不用改本文件！直接替换那个游戏的 HTML 即可。
-   ★ 新增游戏：把 HTML 传到仓库根目录，然后在下面加一项：
+   更新时间：2026-10-17 13:04
+   共 8 个游戏
 
-        { file:'gobang.html', icon:'⚫', title:'五子棋',
-          desc:'15×15 棋盘，先连成五子者胜。', tags:['棋类','AI'] }
-
-     ▶ 网址就是 .../games/gobang.html
-     ▶ 或者双击「生成游戏清单.bat」自动生成本文件
-
-   ▶ 数组顺序 = 页面显示顺序
-   ▶ 未完成的游戏：{ soon:true, icon:'🎲', title:'新游戏', desc:'敬请期待' }
+   ★ 新增游戏：把 HTML 丢进本文件夹，然后双击「生成游戏清单.bat」
+   ★ 想改卡片上的文字/图标：在游戏 HTML 的 <head> 里加
+       <meta name="game:icon"  content="🎲">
+       <meta name="game:desc"  content="一句话介绍">
+       <meta name="game:tags"  content="标签1,标签2">
+       <meta name="game:color" content="#6ea8ff">
+       <meta name="game:badge" content="new">
    ========================================================= */
 const GAMES = [
-  {
+{
     file: 'typing.html',
     icon: '⌨️',
     title: '键盘打字大冒险',
@@ -22,7 +21,7 @@ const GAMES = [
     tags: ['打字', '中文', '街机', '手机'],
     color: '#6ea8ff'
   },
-  {
+{
     file: 'jungle.html',
     icon: '🐯',
     title: '斗兽棋',
@@ -30,7 +29,7 @@ const GAMES = [
     tags: ['棋类', 'AI', '双人', '手机'],
     color: '#ffa94d'
   },
-  {
+{
     file: 'game2048.html',
     icon: '🔢',
     title: '2048',
@@ -39,7 +38,7 @@ const GAMES = [
     color: '#ffc44d',
     isNew: true
   },
-  {
+{
     file: 'battleship.html',
     icon: '🚢',
     title: '海战棋',
@@ -48,7 +47,7 @@ const GAMES = [
     color: '#4dabf7',
     isNew: true
   },
-  {
+{
     file: 'gobang.html',
     icon: '⚫',
     title: '五子棋',
@@ -56,5 +55,32 @@ const GAMES = [
     tags: ['棋类', 'AI', '双人', '手机'],
     color: '#94a3b8',
     isNew: true
+  },
+  {
+    file: 'minesweeper.html',
+    icon: '💣',
+    title: '扫雷',
+    desc: '经典扫雷，三档难度。首点必安全，支持插旗与双键快开。',
+    tags: ['益智', '单人', '手机'],
+    color: '#ff6b6b'
+    , isNew: true
+  },
+  {
+    file: 'sudoku.html',
+    icon: '🔢',
+    title: '数独',
+    desc: '经典数独，三档难度。自动生成唯一解题目，支持候选数与智能提示。',
+    tags: ['益智', '数字', '单人', '手机'],
+    color: '#a06bff'
+    , isNew: true
+  },
+  {
+    file: 'tetris.html',
+    icon: '🧱',
+    title: '俄罗斯方块',
+    desc: '经典俄罗斯方块。消行音阶递增，支持手机滑动与虚拟按键。',
+    tags: ['街机', '休闲', '手机'],
+    color: '#4dabf7'
+    , isNew: true
   }
 ];
